@@ -204,9 +204,10 @@ app.post('/api/waybill', async (req, res) => {
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage'
+        '--disable-dev-shm-usage',
       ],
-      executablePath: process.env.GOOGLE_CHROME_SHIM || '/app/.apt/google/chrome/google-chrome'
+      // chrome-for-testing buildpack sets this env var:
+      executablePath: process.env.CHROME_PATH
     });
     const page    = await browser.newPage();
     await page.setContent(html, {
