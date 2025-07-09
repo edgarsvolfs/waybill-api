@@ -201,13 +201,7 @@ app.post('/api/waybill', async (req, res) => {
     // 4) Launch headless Chrome and generate the PDF
     const browser = await puppeteer.launch({
       headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-      ],
-      // chrome-for-testing buildpack sets this env var:
-      executablePath: process.env.CHROME_PATH
+      args: ['--no-sandbox','--disable-setuid-sandbox']
     });
     const page    = await browser.newPage();
     await page.setContent(html, {
