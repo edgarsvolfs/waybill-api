@@ -1,0 +1,15 @@
+{
+  "reciever":"Ņizviģis Puņķtapa",
+  "reg_number_reciever":"12345678",
+  "address_reciever":"Riga, Brīvības iela 1",
+  "vat_number_reciever":"LV12345678901",
+  "bank_reciever":"Swedbank",
+  "bank_account_reciever":"LV00HABA0000123456789",
+  "recieving_location":"123 Main St, Riga",
+  "products":[
+    
+    { "quantity":1,  "price": 121 },
+    { "description":"Widget B","quantity":1, "price": 121, "price_includes_vat":false, "product_location":"RIga, saapd ieal 10at -3"}
+  ]
+}
+

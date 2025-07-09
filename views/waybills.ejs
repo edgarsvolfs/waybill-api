@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="lv">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- A4-layout stylesheet -->
+  <!-- <link rel="stylesheet" href="../public/styles.css"> -->
+  <style>
+    <%- css %>
+  </style>
+
+  <!-- scripts -->
+ 
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.2/html2pdf.bundle.min.js"></script>
+
+    <style>
+    #page {
+      background-image: url('data:<%= logoMime %>;base64,<%= logoData %>');
+      background-repeat:   no-repeat;
+      background-size:     120%;
+      background-position: 3% top;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- everything inside #page is rendered to PDF -->
+  <div id="page">
+
+   
+
+    <main>
+      <!-- <button data-html2canvas-ignore="true" class="back-button" id="backButton" onclick="goBack()">Atgriezties</button> -->
+
+      <h1 id="waybill_number">Rēķins</h1>
+      <h3 id="todaysDate"><%= todaysDate %></h3>
+      <hr>
+
+      <form id="pdfForm" action="submit_waybill.php" method="post">
+
+        <!-- PIEGĀDĀTĀJS / SAŅĒMĒJS BLOKI -->
+        <div class="column form-row">
+          <label class="label">Piegādātājs</label>
+          <textarea class="input3" >SIA BALANSS - V</textarea>
+        </div>
+        <div class=" form-row">
+          <label class="label">Reģ. Nr.</label>
+          <textarea class="input3">40203552764</textarea>
+        </div>
+
+        <div class="column form-row">
+          <label class="label">Jurid.adrese/dekl.dz.v</label>
+          <textarea class="input3">Miesnieku iela 8, Rīga, LV-1050</textarea>
+        </div>
+        <div class=" form-row">
+          <label class="label">Norēķinu rekvizīti</label>
+          <textarea class="input3">SEB banka a/s</textarea>
+        </div>
+
+        
+        <div class="column form-row">
+          <label class="label">Konts</label>
+          <textarea class="input3">LV05UNLA0055004379559</textarea>
+        </div>
+        <div class=" form-row">
+          <label class="label">Tālrunis</label>
+          <textarea class="input3">+37129126120</textarea>
+        </div>
+
+        <div class="column form-row">
+          <label class="label">E-pasts</label>
+          <textarea class="input3">info@balanss-v.lv</textarea>
+        </div>
+         <div class=" form-row">
+          <label class="label"></label>
+          <textarea class="input3"></textarea>
+        </div>
+
+        <hr>
+
+        <!-- SAŅĒMĒJS --> 
+        <div class="container clearfix">
+        <div class="column form-row">
+            <label class="label" for="reciever">Saņēmējs:</label>
+            <div class="input1" id="reciever"><%= reciever %></div>
+        </div>
+        <div class="form-row">
+            <label class="label2" for="reg_number_reciever">Reģ. Nr.:</label>
+            <div class="input1" id="reg_number_reciever"><%= reg_number_reciever %></div>
+        </div>
+
+        <div class="column form-row">
+            <label class="label" for="address_reciever">Jurid.adrese/dekl.dz.v.:</label>
+            <div class="input1" id="address_reciever"><%= address_reciever %></div>
+        </div>
+        <div class="form-row">
+            <label class="label2" for="vat_number_reciever">PVN Nr.:</label>
+            <div class="input1" id="vat_number_reciever"><%= vat_number_reciever %></div>
+        </div>
+
+        <div class="column form-row">
+            <label class="label" for="bank_reciever">Norēķinu rekvizīti:</label>
+            <div class="input1" id="bank_reciever"><%= bank_reciever %></div>
+        </div>
+        <div class="form-row">
+            <label class="label2" for="bank_account_reciever">Konts:</label>
+            <div class="input1" id="bank_account_reciever"><%= bank_account_reciever %></div>
+        </div>
+
+        <div class="column form-row">
+            <label class="label" for="recieving_location">Saņemšanas vieta:</label>
+            <div class="input1" id="recieving_location"><%= recieving_location %></div>
+        </div>
+        </div>
+
+        <hr>
+
+        <!-- DETALIZĒTA INFO -->
+        <div class="column form-row">
+          <label class="label">Darījuma apraksts:</label>
+          <textarea class="input1" id="deal_description">Pakalpojuma sniegšana</textarea>
+        </div>
+
+
+        <div class=" form-row">
+          <label class="label">Apmaksas veids:</label>
+          <textarea class="input1" id="payment_method">Pārskaitījums</textarea>
+        </div>
+
+
+        <div class="column form-row">
+          <label class="label">Piegādes datums:</label>
+          <textarea class="input1" id="delivery_date"><%= delivery_date %></textarea>
+        </div>
+
+        <div class=" form-row">
+          <label class="label">Apmaksas termiņš:</label>
+          <textarea class="input1" id="payment_date_due"><%= payment_date_due %></textarea>
+        </div>
+
+        <!-- PREČU / PAKALPOJUMU TABULA -->
+        <div id="tableWrapper">
+        <table id="myTable">
+            <thead>
+            <tr>
+                <th>Nosaukums</th>
+                <th>Mērvienība</th>
+                <th>Daudzums</th>
+                <th>Cena (EUR)</th>
+                <th>Atlaide (%)</th>
+                <th>PVN (%)</th>
+                <th>Summa</th>
+            </tr>
+            </thead>
+          <tbody>
+            <% products.forEach(function(item) { %>
+              <tr>
+                <td class="output"><%= item.description %></td>
+                <td class="output"><%= item.unit        %></td>
+                <td class="output"><%= item.quantity    %></td>
+                <td class="output"><%= item.displayPrice %></td>
+                <td class="output"><%= item.discount    %></td>
+                <td class="output"><%= item.vat %>%     </td>
+                <td class="output"><%= item.total       %></td>
+              </tr>
+
+              <!-- New “notes” row: one cell spanning all columns -->
+              <tr class="note-row">
+                <td colspan="7" class="notes">
+                  Piezīmes: <%= item.product_location %>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+        </div>
+
+
+        <!-- REZULTĀTU LAUKI -->
+        <div class="totals">
+          <div class="row">
+            <span>Atlaide</span>
+            <span class="output"><%= sumDisc %></span>
+          </div>
+          <div class="row">
+            <span>Ar PVN neapl. Summa (EUR)</span>
+            <span class="output"><%= sumNoVatBase %></span>
+          </div>
+          <div class="row">
+            <span>Ar PVN apl. Summa (EUR)</span>
+            <span class="output"><%= sumVatBase %></span>
+          </div>
+          <div class="row">
+            <span>PVN (EUR)</span>
+            <span class="output"><%= vatAmount %></span>
+          </div>
+          <div class="row">
+            <span>Summa ar PVN (EUR)</span>
+            <span class="output"><%= withVatValue %></span>
+          </div>
+          <div class="row">
+            <span>Summa kopā (EUR)</span>
+            <span class="output"><%= totalCost %></span>
+          </div>
+          <div class="row">
+            <span>Summa apmaksai (EUR)</span>
+            <span class="output"><%= totalCost %></span>
+          </div>
+        </div>
+
+        <div class="words">
+          <label>Apmaksas summa vārdiem:</label>
+          <span id="total_cost_to_words"><%= totalWords %></span>
+        </div>
+
+       
+
+        <hr>
+
+
+
+        <div class="column form-row">
+          <label class="label">Piegādātājs</label>
+          <textarea class="input3" >SIA BALANSS - V</textarea>
+        </div>
+        <div class=" form-row">
+          <label class="label">Reģ. Nr.</label>
+          <textarea class="input3">40203552764</textarea>
+        </div>
+
+        <div class="column form-row">
+          <label class="label">Jurid.adrese/dekl.dz.v</label>
+          <textarea class="input3">Miesnieku iela 8, Rīga, LV-1050</textarea>
+        </div>
+        <div class=" form-row">
+          <label class="label">Norēķinu rekvizīti</label>
+          <textarea class="input3">SEB banka a/s</textarea>
+        </div>
+
+        
+        <div class="column form-row">
+          <label class="label">Konts</label>
+          <textarea class="input3">LV05UNLA0055004379559</textarea>
+        </div>
+        <div class=" form-row">
+          <label class="label">Tālrunis</label>
+          <textarea class="input3">+37129126120</textarea>
+        </div>
+
+        <div class="column form-row">
+          <label class="label">E-pasts</label>
+          <textarea class="input3">info@balanss-v.lv</textarea>
+        </div>
+         <div class=" form-row">
+          <label class="label"></label>
+          <textarea class="input3"></textarea>
+        </div>
+
+        <hr>
+
+
+
+        <p class="info">
+          Papildus informācija &nbsp; <strong>Dokuments ir sagatavots elektroniski un, pamatojoties uz savstarpējo vienošanos, derīgs bez paraksta</strong>
+        </p>
+      </form>
+
+      <!-- Loading overlay is ignored by html2canvas -->
+      <div id="loadingScreen" data-html2canvas-ignore="true">
+        <div class="spinner" data-html2canvas-ignore="true"></div>
+      </div>
+    </main>
+  </div>
+
+
+</body>
+</html>

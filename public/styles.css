@@ -1,0 +1,283 @@
+/* 0. Center the page in the browser & give a light background behind it */
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #f0f0f0;
+  /* allow the page to scroll if content overflows viewport */
+  overflow-y: auto;
+  height: auto;
+}
+
+body {
+  /* only center horizontally now */
+  display: flex;
+  justify-content: center;
+  /* give a little breathing room top & bottom */
+  padding: 20px 0;
+}
+
+
+
+label, .input1, .input2, th, td, .totals, .words {
+  font-size: 9pt;
+}
+
+#page {
+  /* 190mm width as before, but no vertical centering */
+  width: 210mm;
+  height: 297mm;
+  padding: 7mm; 
+  background: #fff;
+  border: 1px solid #ccc;
+  box-shadow: 0 0 10px rgba(0,0,0,0.2);
+  box-sizing: border-box;
+  /* vertical margins now come from body’s padding */
+  margin: 0;
+}
+
+/* keep A4 sizing for the PDF */
+@page {
+  size: A4 portrait;
+  margin: 0;
+}
+
+
+
+
+/* Headings */
+h1, h3 {
+  margin: 0;
+  padding: 0;
+  z-index: 10;
+}
+h1 {
+  font-size: 18pt;
+  text-align: center;
+  margin-bottom: 2mm;
+}
+h3 {
+  font-size: 10pt;
+  text-align: center;
+  margin-bottom: 5mm;
+}
+hr {
+  border: none;
+  border-top: 1px solid #ccc;
+  margin: 3mm 0;
+}
+
+/* Back button (ignored by html2pdf) */
+.back-button {
+  position: absolute;
+  top: 10mm;
+  left: 10mm;
+  padding: 4px 8px;
+  font-size: 8pt;
+  display: inline-block;
+  cursor: pointer;
+}
+@media print {
+  .back-button { display: none; }
+}
+
+/* Form layout */
+form {
+  width: 100%;
+}
+
+.container {
+  width: 100%;
+  margin-bottom: 5mm;
+}
+.clearfix::after {
+  content: "";
+  display: table;
+  clear: both;
+}
+
+.column {
+  float: left;
+  width: 60%;
+}
+.form-row {
+  padding-left: 2mm;
+  margin-bottom: 1mm;
+  display: flex;
+  align-items: flex-start;
+}
+.label {
+  width: 30mm;
+  font-size: 9pt;
+  /* padding-top: 2mm; */
+}
+.label2 {
+  width: 20mm;
+  font-size: 9pt;
+  /* padding-top: 2mm; */
+}
+
+.input1, .input2 {
+  flex-grow: 1;
+  font-size: 10pt;
+  padding: 2px 4px;
+  border: 1px solid #ccc;
+  resize: none;
+  overflow: hidden;
+  min-height: 6mm;
+  font-weight: bolder;
+  /* line-height: 1.2em; */
+  max-width: 287.391px;
+  outline: none;
+  border: none;
+}
+
+.input3 {
+  flex-grow: 1;
+  font-size: 10pt;
+  padding: 2px 4px;
+  border: none;
+  line-height: 6px;
+  font-weight: bolder;
+  pointer-events: none;
+  resize: none;
+
+
+}
+
+/* Table of items */
+#myTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 3mm;
+}
+#myTable th, #myTable td {
+  border: 1px solid #999;
+  padding: 1mm 2mm;
+  font-size: 8pt;
+  text-align: left;
+}
+#myTable th {
+  background: #f0f0f0;
+}
+
+/* Add/remove row buttons */
+#add_table_row, #remove_table_row {
+  /* font-size: 10pt; */
+  font-size: 7pt;
+  padding: 2px 6px;
+  margin-right: 2mm;
+  cursor: pointer;
+}
+
+/* Totals section */
+.totals {
+  width: 50%;
+  float: right;
+  font-size: 9pt;
+  margin-bottom: 5mm;
+}
+.totals .row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 1mm;
+}
+
+/* Amount in words */
+.words {
+  clear: both;
+  margin-bottom: 5mm;
+  font-size: 9pt;
+}
+.words label {
+  font-weight: bold;
+}
+
+/* Submit button */
+#submit {
+  display: block;
+  width: 40mm;
+  padding: 4px 0;
+  text-align: center;
+  background: #007bff;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  border-radius: 2mm;
+}
+#submit:hover {
+  background: #0056b3;
+}
+
+/* Footer info */
+.info {
+  font-size: 9pt;
+  color: #555;
+  margin-top: 5mm;
+  text-align: center;
+}
+
+/* Utility: hide loading overlay in PDF */
+#loadingScreen {
+  display: none !important;
+}
+#myTable {
+  table-layout: fixed;
+  width: 100%;
+}
+
+#myTable th,
+#myTable td {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  vertical-align: top;
+}
+
+.textarea_table {
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  resize: none;
+  height: 30px;
+}
+
+#myTable th:nth-child(2),
+#myTable td:nth-child(2) { width: 15mm; }
+#myTable th:nth-child(3),
+#myTable td:nth-child(3) { width: 15mm; }
+#myTable th:nth-child(4),
+#myTable td:nth-child(4) { width: 15mm; }
+#myTable th:nth-child(5),
+#myTable td:nth-child(5) { width: 15mm; }
+#myTable th:nth-child(6),
+#myTable td:nth-child(6) { width: 15mm; }
+
+
+
+.input1,
+.input2,
+.textarea_table {
+  min-height: 16px;
+  height: auto;      /* allow JS or content to grow it */
+  box-sizing: border-box;
+}
+
+
+/* (optional) if you want the text vertically centered until it overflows: */
+textarea {
+  line-height: 12px;
+  border: none;
+}
+.note-row .notes {
+  font-style: italic;
+  color: #333;
+  padding: 4px 8px;
+}
+
+
+#page.pdf-mode textarea {
+  line-height: 12px !important; 
+  border: none !important;
+  outline: none !important;
+
+  
+}

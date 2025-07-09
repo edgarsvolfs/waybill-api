@@ -1,0 +1,19 @@
+{
+  "name": "proj-ai-agents-test",
+  "version": "1.0.0",
+  "description": "",
+  "main": "uploadFile.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "body-parser": "^2.2.0",
+    "ejs": "^3.1.10",
+    "express": "^5.1.0",
+    "puppeteer": "^24.12.0"
+  }
+}
