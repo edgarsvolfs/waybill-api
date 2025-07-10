@@ -56,11 +56,17 @@ app.post('/api/waybill', async (req, res) => {
         ? item.product_location
         : data.recieving_location;
 
+    const description = item.description?.trim()
+    ? item.description
+    : 'Īpašuma vērtēšanas pakalpojumi';
+
+
       // Build displayPrice (always show the VAT-exclusive unit price)
       const displayPrice = netUnitPrice.toFixed(2);
 
       return {
         ...item,
+        description,
         unit:            item.unit ?? 'gab',
         quantity,
         discount,
@@ -138,9 +144,9 @@ app.post('/api/waybill', async (req, res) => {
     return result.trim() + ' ';
   }
 
-    function capitalizeFirstLetter(s) {
+  function capitalizeFirstLetter(s) {
       return s.charAt(0).toUpperCase() + s.slice(1);
-    }
+  }
 
 
     // — Compute “today” and “today + 10” in Latvian long format
@@ -204,6 +210,19 @@ app.post('/api/waybill', async (req, res) => {
       args: ['--no-sandbox','--disable-setuid-sandbox']
     });
     const page    = await browser.newPage();
+    
+    ////////////////
+    await page.emulateMediaType('print');
+    ////////////////
+
+    //////////
+    await page.setViewport({
+      width: 2100,             // 10px per mm → 210 mm at 96 DPI
+      height: 2970,            // 297 mm at 96 DPI
+      deviceScaleFactor: 1     // no Retina/2x scaling
+    });
+    ///////////////
+
     await page.setContent(html, {
         waitUntil: 'networkidle0',
         url: 'http://localhost:3000'      // or whatever your host:port is
@@ -211,7 +230,12 @@ app.post('/api/waybill', async (req, res) => {
     const pdfBuffer = await page.pdf({
       format: 'A4',
       printBackground: true,
-   
+      scale: 1,
+      margin:{    top:    '0mm',
+    right:  '0mm',
+    bottom: '0mm',
+    left:   '0mm'
+},
     });
     await browser.close();
 

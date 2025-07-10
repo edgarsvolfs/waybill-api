@@ -25,7 +25,8 @@ label, .input1, .input2, th, td, .totals, .words {
 #page {
   /* 190mm width as before, but no vertical centering */
   width: 210mm;
-  height: 297mm;
+  /* height: 297mm; */
+  height: 283mm;
   padding: 7mm; 
   background: #fff;
   border: 1px solid #ccc;
