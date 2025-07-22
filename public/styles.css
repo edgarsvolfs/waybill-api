@@ -19,7 +19,8 @@ body {
 
 
 label, .input1, .input2, th, td, .totals, .words {
-  font-size: 9pt;
+  /* font-size: 9pt; */
+  font-size: 7pt;
 }
 
 #page {
@@ -52,12 +53,13 @@ h1, h3 {
   z-index: 10;
 }
 h1 {
-  font-size: 18pt;
+  /* font-size: 18pt; */
+  font-size: 16pt;
   text-align: center;
   margin-bottom: 2mm;
 }
 h3 {
-  font-size: 10pt;
+  font-size: 8pt;
   text-align: center;
   margin-bottom: 5mm;
 }
@@ -73,7 +75,7 @@ hr {
   top: 10mm;
   left: 10mm;
   padding: 4px 8px;
-  font-size: 8pt;
+  font-size: 6pt;
   display: inline-block;
   cursor: pointer;
 }
@@ -108,18 +110,18 @@ form {
 }
 .label {
   width: 30mm;
-  font-size: 9pt;
+  font-size: 7pt;
   /* padding-top: 2mm; */
 }
 .label2 {
   width: 20mm;
-  font-size: 9pt;
+  font-size: 7pt;
   /* padding-top: 2mm; */
 }
 
 .input1, .input2 {
   flex-grow: 1;
-  font-size: 10pt;
+  font-size: 8pt;
   padding: 2px 4px;
   border: 1px solid #ccc;
   resize: none;
@@ -134,7 +136,7 @@ form {
 
 .input3 {
   flex-grow: 1;
-  font-size: 10pt;
+  font-size: 8pt;
   padding: 2px 4px;
   border: none;
   line-height: 6px;
@@ -154,7 +156,7 @@ form {
 #myTable th, #myTable td {
   border: 1px solid #999;
   padding: 1mm 2mm;
-  font-size: 8pt;
+  font-size: 6pt;
   text-align: left;
 }
 #myTable th {
@@ -164,7 +166,7 @@ form {
 /* Add/remove row buttons */
 #add_table_row, #remove_table_row {
   /* font-size: 10pt; */
-  font-size: 7pt;
+  font-size: 5pt;
   padding: 2px 6px;
   margin-right: 2mm;
   cursor: pointer;
@@ -174,7 +176,7 @@ form {
 .totals {
   width: 50%;
   float: right;
-  font-size: 9pt;
+  font-size: 7pt;
   margin-bottom: 5mm;
 }
 .totals .row {
@@ -187,7 +189,7 @@ form {
 .words {
   clear: both;
   margin-bottom: 5mm;
-  font-size: 9pt;
+  font-size: 7pt;
 }
 .words label {
   font-weight: bold;
@@ -211,7 +213,7 @@ form {
 
 /* Footer info */
 .info {
-  font-size: 9pt;
+  font-size: 7pt;
   color: #555;
   margin-top: 5mm;
   text-align: center;
