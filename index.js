@@ -430,7 +430,7 @@ const rows = data.products.map(prod => {
   });
 
 
-    const outputDir    = "./exports";
+    const outputDir    = "./";
     const baseFilename = data.documentNumber || "imports_" + data.reciever;
     createAndSaveXLS(headers, rows, outputDir, baseFilename);
   }
