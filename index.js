@@ -2,7 +2,12 @@ const express    = require('express');
 const bodyParser = require('body-parser');
 const puppeteer  = require('puppeteer');
 const path       = require('path');
+const XLSX       = require('xlsx'); 
 const app = express();
+// 1) install: npm install jsdom
+const { JSDOM } = require("jsdom");
+const dom       = new JSDOM(`<!doctype html><html><body></body></html>`);
+global.document = dom.window.document;
 
 
 // at top of index.js
@@ -144,6 +149,7 @@ app.post('/api/waybill', async (req, res) => {
     return result.trim() + ' ';
   }
 
+  console.log(data);
   function capitalizeFirstLetter(s) {
       return s.charAt(0).toUpperCase() + s.slice(1);
   }
@@ -154,12 +160,280 @@ app.post('/api/waybill', async (req, res) => {
     const due = new Date(now);
     due.setDate(now.getDate() + 10);
 
-    const dateOpts = { year: 'numeric', month: 'long', day: 'numeric' };
-    const formatter = new Intl.DateTimeFormat('lv-LV', dateOpts);
 
-    const todaysDate        = formatter.format(now); 
-    const delivery_date     = todaysDate;          // same as today
-    const payment_date_due  = formatter.format(due);
+    const formatter = new Intl.DateTimeFormat('lv-LV', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+
+
+    const todaysDate        = formatter.format(now).replace(/\./g, '/');; 
+    const delivery_date = formatter.format(now).replace(/\./g, '/');
+    const payment_date_due  = formatter.format(due).replace(/\./g, '/');
+
+
+
+  function createAndSaveXLS(headers, data, outputDir, baseFilename) {
+    // 1) Ensure output directory exists
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+
+    // 2) Build a 2D array for SheetJS: first row = headers, then your data rows
+    const rows = Array.isArray(data[0])
+      ? data                         // you passed in multiple rows
+      : [ data ];                    // wrap single row into an array
+    const aoa  = [ headers, ...rows ];
+
+    // 3) Create workbook + worksheet
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    XLSX.utils.book_append_sheet(wb, ws, 'Noliktavas dokumenti');
+
+    // 4) Write as .xlsx
+    const filePath = path.join(outputDir, `${baseFilename}.xlsx`);
+    XLSX.writeFile(wb, filePath, { bookType: 'xlsx' });
+
+    console.log(`XLS file written to ${filePath}`);
+  }
+
+
+  // 2) A standalone “generateXML” that just does the XML work:
+  function generateXLS(data) {
+    // --- collect your filename + form data exactly as you did before ---
+   
+
+    // --- same headers array you already have ---
+   const headers = [
+      "Dokumenta Nr.",
+      "Dokumenta Nr. (veidlapas sērija)",
+      "Dokumenta datums",
+      "Dokumenta tips (saīsinājums)",
+      "Dokumenta veids",
+      "Dokumenta valūta",
+      "Dokumenta valūtas kurss",
+      "Dokumenta uzņēmuma PVN maksātāja valsts",
+      "Dokumenta uzņēmuma PVN numurs",
+      "Dokumenta partnera nosaukums",
+      "Dokumenta partnera reģ.nr./pers.kods",
+      "Dokumenta partnera e-pasts",
+      "Dokumenta partnera PVN maksātāja valsts",
+      "Dokumenta partnera PVN numurs",
+      "Dokumenta partnera kontaktpersona",
+      "Dokumenta darbinieka/aģenta nosaukums",
+      "Dokumenta uzņēmuma noliktavas adrese",
+      "Dokumenta partnera noliktavas adrese",
+      "Dokumenta PVN likme (noklusētā)",
+      "Dokumenta summa",
+      "Dokumenta PVN summa",
+      "Dokumenta summa apmaksai",
+      "Dokumenta atlaides %",
+      "Dokumenta atlaides summa",
+      "Dokumenta apmaksas termiņš",
+      "Dokumenta apmaksas veids",
+      "Dokumenta piegādes datums",
+      "Dokumenta kontēšanas veidne",
+      "Dokumenta kopsummu aprēķina veids",
+      "Dokumenta piezīmes (papildus noteikumi)",
+      // "Kokmateriālu ciršanas apliecība",
+      // "Kokmateriālu pārvadātāja nosaukums",
+      // "Kokmateriālu transportlīdzekļa reģ. Nr.",
+      // "Kokmateriālu transportlīdzekļa vadītājs",
+      // "Kokmateriālu darījuma raksturs",
+      // "Kokmateriālu pakalpojuma veids",
+      // "Kokmateriālu darījuma veids",
+      "Dimensijas kods",
+      "Dimensijas nosaukums",
+      "Papildinformācijas nosaukums",
+      "Papildinformācija",
+      "Rindiņas preces kods",
+      "Rindiņas preces svītrkods",
+      // "Rindiņas preces nosaukums",
+      "Rindiņas preces papildkods",
+      "Rindiņas uzskaites grupa (saīsinājums)",
+      "Rindiņas mērvienība",
+      "Rindiņas daudzums",
+      "Rindiņas cena",
+      "Rindiņas cena EUR",
+      "Rindiņas iepirkšanas cena",
+      "Rindiņas uzskaites vērtība EUR",
+      "Rindiņas atlaides %",
+      "Rindiņas cena ar PVN un atlaidēm",
+      "Rindiņas PVN likme",
+      "Rindiņas summa apmaksai",
+      "Rindiņas preces izcelsmes valsts kods",
+      "Rindiņas preces KN kods",
+      "Rindiņas akcīzes nodoklis",
+      "Rindiņas derīguma termiņš",
+      "Rindiņas sertifikāts",
+      "Rindiņas noliktava (no kuras paņem preci)",
+      "Rindiņas noliktava (kurā novieto preci)",
+      "Rindiņas piezīmes",
+      // "Rindiņas degvielas blīvums",
+      // "Rindiņas degvielas sēra saturs",
+      // "Rindiņas degvielas temperatūra",
+      "Sastāvdaļas preces kods",
+      "Sastāvdaļas preces svītrkods",
+      "Sastāvdaļas preces papildkods",
+      "Sastāvdaļas uzskaites grupa (saīsinājums)",
+      "Sastāvdaļas mērvienība",
+      "Sastāvdaļas daudzums",
+      "Sastāvdaļas derīguma termiņš",
+      "Sastāvdaļas sertifikāts",
+      "Sastāvdaļas preces KN kods",
+      "Sastāvdaļas noliktava (no kuras paņem preci)",
+      "Sastāvdaļas piezīmes",
+      "PVN izvērsums - apliekamā summa",
+      "PVN izvērsums - PVN",
+      "PVN izvērsums - PVN likme"
+    ];
+
+
+    const docDefaults = {
+      "Dokumenta Nr.":                          "0002",
+      "Dokumenta Nr. (veidlapas sērija)":       "BAL-V/GEN",
+      "Dokumenta datums":                       todaysDate,
+      "Dokumenta tips (saīsinājums)":           "Rēķins",
+      "Dokumenta veids":                        "Standarta",
+      "Dokumenta valūta":                       "EUR",
+      "Dokumenta valūtas kurss":                "",
+      "Dokumenta uzņēmuma PVN maksātāja valsts":  "LV",
+      "Dokumenta uzņēmuma PVN numurs":          "LV40203552764",
+      "Dokumenta partnera nosaukums":           data.reciever,
+      "Dokumenta partnera reģ.nr./pers.kods":   data.reg_number_reciever,
+      "Dokumenta partnera e-pasts":             "", //epastu pievienot
+      "Dokumenta partnera PVN maksātāja valsts": "",
+      "Dokumenta partnera PVN numurs":          "",
+      "Dokumenta partnera kontaktpersona":      "",
+      "Dokumenta darbinieka/aģenta nosaukums":   "", //agents
+      "Dokumenta uzņēmuma noliktavas adrese":   "",
+      "Dokumenta partnera noliktavas adrese":   data.recieving_location,
+      "Dokumenta PVN likme (noklusētā)":       "21",
+      "Dokumenta summa":                        sumVatBase.toFixed(2),
+      "Dokumenta PVN summa":                    vatAmount.toFixed(2),
+      "Dokumenta summa apmaksai":               totalCost.toFixed(2),
+      "Dokumenta atlaides %":                   "",  
+      "Dokumenta atlaides summa":               "0",//sumDisc.toFixed(2),
+      "Dokumenta apmaksas termiņš":             payment_date_due,
+      "Dokumenta apmaksas veids":               "Pārskaitījums",
+      "Dokumenta piegādes datums":              todaysDate,
+      "Dokumenta kontēšanas veidne":           "NĪV",//"Nekontēt",
+      "Dokumenta kopsummu aprēķina veids":      "no cenas ar nodokli",
+      "Dokumenta piezīmes (papildus noteikumi)": `Dokuments ir sagatavots elektroniski un derīgs bez paraksta atbilstoši "Grāmatvedības Likuma" 11.panta nosacījumiem.`,
+      "Kokmateriālu darījuma raksturs":          "Pakalpojuma sniegšana", //??
+
+      // "Kokmateriālu darījuma veids":            "Pakalpojums", //??
+      // "Dimensijas kods":                        "NOT DONE",
+      // "Dimensijas nosaukums":                   "NOT DONE",
+      // "Papildinformācijas nosaukums":            "NOT DONE",
+      // "Papildinformācija":                       "NOT DONE",
+      // "Rindiņas preces kods":                       "NOT DONE",
+      // "Rindiņas preces svītrkods":              "NOT DONE",
+      // "Rindiņas preces papildkods":             "NOT DONE",
+      "Rindiņas uzskaites grupa (saīsinājums)":   "*",
+      // "Rindiņas mērvienība":                     "gab",
+      // "Rindiņas daudzums":                        "1.00",
+      // "Rindiņas cena":                            "NOT DONE",
+      // "Rindiņas cena EUR":                        "NOT DONE",
+      // "Rindiņas iepirkšanas cena":                "NOT DONE",
+      // "Rindiņas uzskaites vērtība EUR":           "NOT DONE",
+      "Rindiņas atlaides %":                      "0",
+      // "Rindiņas cena ar PVN un atlaidēm":         "NOT DONE",
+      // "Rindiņas PVN likme":                       "21.00",
+      // "Rindiņas summa apmaksai":                  "NOT DONE",
+      // "Rindiņas preces izcelsmes valsts kods":   "NOT DONE",
+      // "Rindiņas preces KN kods":                 "NOT DONE",
+      // "Rindiņas akcīzes nodoklis":               "NOT DONE",
+      // "Rindiņas derīguma termiņš":               "NOT DONE",
+      // "Rindiņas sertifikāts":                   "NOT DONE",
+      // "Rindiņas noliktava (no kuras paņem preci)": "NOT DONE",
+      // "Rindiņas noliktava (kurā novieto preci)": "NOT DONE",
+      // "Rindiņas piezīmes":                     "NOT DONE",
+      // "Sastāvdaļas preces kods":                 "NOT DONE",  
+      // "Sastāvdaļas preces svītrkods":           "NOT DONE",
+      // "Sastāvdaļas preces papildkods":          "NOT DONE",
+      // "Sastāvdaļas uzskaites grupa (saīsinājums)": "NOT DONE",
+      // "Sastāvdaļas mērvienība":                  "NOT DONE",
+      // "Sastāvdaļas daudzums":                    "NOT DONE",
+      // "Sastāvdaļas derīguma termiņš":            "NOT DONE",
+      // "Sastāvdaļas sertifikāts":                "NOT DONE", 
+      // "Sastāvdaļas preces KN kods":             "NOT DONE",
+      // "Sastāvdaļas noliktava (no kuras paņem preci)": "NOT DONE",
+      // "Sastāvdaļas piezīmes":                   "NOT DONE",
+      // "PVN izvērsums - apliekamā summa": "",
+      // "PVN izvērsums - PVN": "",
+      // "PVN izvērsums - PVN likme": "21.00",
+
+      "PVN izvērsums - PVN likme": "21.00",
+
+
+    };
+    // --- build your defaults map exactly as before ---
+    // --- 4) Map each header to a default value ---
+    
+const rows = data.products.map(prod => {
+  const quantity = Number(prod.quantity) || 1;
+  const priceRaw = Number(prod.price);
+
+  const vatRate = prod.hasOwnProperty('vat')
+    ? Number(prod.vat) / 100
+    : 0.21;
+
+  const includesVat = prod.hasOwnProperty('price_includes_vat')
+    ? Boolean(prod.price_includes_vat)
+    : true;
+
+  // 4) Compute net‑unit price (price without VAT)
+  //    If it already includes VAT, strip it off; otherwise it is the price
+  const netUnitPrice = includesVat
+    ? priceRaw / (1 + vatRate)
+    : priceRaw;
+
+  // 5) Compute gross‑unit price (price with VAT)
+  const grossUnitPrice = includesVat
+    ? priceRaw
+    : netUnitPrice * (1 + vatRate);
+
+    // 6) Now build your rowMap using those values
+    const rowMap = {
+      ...docDefaults,
+
+      // conditional code example:
+      "Rindiņas preces kods": prod.description === "Ceļa izmaksas" 
+                            ? "0004" 
+                            : "0001",
+
+      "Rindiņas preces nosaukums": prod.description,
+      "Rindiņas mērvienība":       prod.unit       || "gab",
+      "Rindiņas daudzums":         quantity,//quantity.toFixed(2),
+
+      // PRICE fields:
+      "Rindiņas cena":             netUnitPrice.toFixed(2),
+      "Rindiņas cena EUR":         netUnitPrice.toFixed(2),
+      "Rindiņas cena ar PVN un atlaidēm": grossUnitPrice.toFixed(2),
+
+      // VALUE & VAT:
+      // "Rindiņas uzskaites vērtība EUR": (netUnitPrice * quantity).toFixed(2),
+      "Rindiņas PVN likme":          (vatRate * 100).toFixed(0),
+      "Rindiņas summa apmaksai":     (grossUnitPrice * quantity).toFixed(2),
+
+      // PVN breakdown:
+      "PVN izvērsums - apliekamā summa": (netUnitPrice * quantity).toFixed(2),
+      "PVN izvērsums - PVN":            ((grossUnitPrice - netUnitPrice) * quantity).toFixed(2),
+      "PVN izvērsums - PVN likme":      (vatRate * 100).toFixed(0),
+
+      // …any other fields…
+    };
+    // turn that map into an array in the same order as headers
+    return headers.map(hdr => rowMap[hdr] ?? "");
+  });
+
+
+    const outputDir    = "./exports";
+    const baseFilename = data.documentNumber || "imports_" + data.reciever;
+    createAndSaveXLS(headers, rows, outputDir, baseFilename);
+  }
 
 
 
@@ -191,7 +465,7 @@ app.post('/api/waybill', async (req, res) => {
       payment_date_due,
     };
 
-
+    
 
 
 
@@ -238,6 +512,10 @@ app.post('/api/waybill', async (req, res) => {
 },
     });
     await browser.close();
+
+    ////////////////////
+    generateXLS(data); // Call the XML generation function
+     ////////////////////
 
 
 // 1) Get the raw receiver (fallback to “waybill” if missing)

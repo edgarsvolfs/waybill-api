@@ -8,8 +8,8 @@
   "recieving_location":"123 Main St, Riga",
   "products":[
     
-    { "quantity":1,  "price": 121 },
-    { "description":"Widget B","quantity":1, "price": 121, "price_includes_vat":false, "product_location":"RIga, saapd ieal 10at -3"}
+    { "description":"Vērtēšanas pakalpojumu sniegšana", "quantity":1,  "price": 121 },
+    { "description":"Ceļa izmaksas","quantity":1, "price": 121, "price_includes_vat":false, "product_location":"RIga, saapd ieal 10at -3"}
   ]
 }
 
