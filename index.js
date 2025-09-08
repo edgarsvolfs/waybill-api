@@ -130,7 +130,7 @@ function buildTableFromBody(data, totals) {
     "Dokumenta partnera PVN maksātāja valsts":"",
     "Dokumenta partnera PVN numurs":          "",
     "Dokumenta partnera kontaktpersona":      "",
-    "Dokumenta darbinieka/aģenta nosaukums":  "",
+    "Dokumenta darbinieka/aģenta nosaukums":  data.agent,
     "Dokumenta uzņēmuma noliktavas adrese":   "",
     "Dokumenta partnera noliktavas adrese":   data.recieving_location || "",
     "Dokumenta PVN likme (noklusētā)":       "21",
