@@ -1,27 +1,32 @@
 @echo off
-REM Ensure the console uses UTF-8 for any Unicode filenames
 chcp 65001 > nul
 
-REM Your Railway API endpoint
 set URL=https://web-production-77c35.up.railway.app/api/waybill
-
-REM Your API key (if you have one configured in Railway)
 set API_KEY=supersecret123
+set ZIP_NAME=waybill_bundle.zip
 
-REM Send data.json and save the PDF as test_waybill.pdf
-curl -X POST "%URL%" ^
-     -H "Content-Type: application/json" ^
-     -H "x-api-key: %API_KEY%" ^
-     -d @data.json ^
-     -o test_waybill.pdf
+REM Download as ZIP (your server sets Content-Type: application/zip)
+curl -sSf -X POST "%URL%" ^
+  -H "Content-Type: application/json" ^
+  -H "x-api-key: %API_KEY%" ^
+  -d @data.json ^
+  -o "%ZIP_NAME%"
 
-REM Check if the PDF was created
-if exist test_waybill.pdf (
-  echo.
-  echo PDF successfully generated: test_waybill.pdf
-) else (
-  echo.
-  echo ERROR: test_waybill.pdf not found!
+IF ERRORLEVEL 1 (
+  echo ❌ Request failed. See response above.
+  pause
+  exit /b 1
 )
+
+REM Unzip using PowerShell (built-in on Windows 10+)
+powershell -NoLogo -NoProfile -Command ^
+  "Expand-Archive -Force '%ZIP_NAME%' '.'"
+
+echo.
+IF EXIST *.pdf echo ✅ PDF saved.
+IF EXIST *.xlsx echo ✅ XLSX saved.
+
+REM Optional: show what we got
+dir /b *.pdf *.xlsx
 
 pause

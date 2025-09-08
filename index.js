@@ -198,7 +198,14 @@ function buildTableFromBody(data, totals) {
   });
 
   const baseFilename = (data.documentNumber || `Rekins__${(data.reciever||'waybill').trim()}`).toString();
-  return { headers, rows, baseFilename };
+  const asciiFilename = baseFilename
+  .normalize("NFD")                   // split base + diacritic
+  .replace(/[\u0300-\u036f]/g, "")    // remove diacritics
+  .replace(/[^\x20-\x7E]/g, "_");     // replace any non-ASCII with _
+
+
+
+  return { headers, rows, asciiFilename };
 }
 
 /* ---------- Main API ---------- */
