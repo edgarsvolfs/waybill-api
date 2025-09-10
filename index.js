@@ -7,6 +7,7 @@ const path       = require('path');
 const fs         = require('fs');
 const archiver   = require('archiver');
 const XLSX = require('xlsx');
+const fsp = fs.promises;
 
 const app = express();
 
@@ -22,6 +23,82 @@ app.set('views', path.join(__dirname, 'views'));
 app.use('/public', express.static(path.join(__dirname, 'public')));
 
 /* ---------- Helpers ---------- */
+
+
+
+
+// Railway volume file creation / editing workaround
+
+const COUNTER_DIR  = process.env.COUNTER_DIR || '/data';
+const COUNTER_FILE = path.join(COUNTER_DIR, 'waybill_counter.json');
+const LOCK_DIR     = path.join(COUNTER_DIR, 'waybill_counter.lock');
+
+// simple lock using mkdir: succeeds only if it doesn't exist
+async function acquireLock(retries = 50, delayMs = 50) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      await fsp.mkdir(LOCK_DIR);
+      return; // got the lock
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw err;
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
+  throw new Error('Could not acquire counter lock');
+}
+
+async function releaseLock() {
+  try { await fsp.rmdir(LOCK_DIR); } catch {}
+}
+
+async function ensureCounterFile() {
+  try {
+    await fsp.mkdir(COUNTER_DIR, { recursive: true });
+    await fsp.access(COUNTER_FILE, fs.constants.F_OK);
+  } catch {
+    const year = new Date().getFullYear();
+    const initial = { year, seq: 0 };
+    await fsp.writeFile(COUNTER_FILE, JSON.stringify(initial), 'utf8');
+  }
+}
+
+function formatWaybillNumber(year, seq) {
+  return `BAL-V/${year}/${String(seq).padStart(5, '0')}`;
+}
+
+async function getNextWaybillNumber() {
+  await ensureCounterFile();
+  await acquireLock();
+  try {
+    const nowYear = new Date().getFullYear();
+    let state;
+    try {
+      const raw = await fsp.readFile(COUNTER_FILE, 'utf8');
+      state = JSON.parse(raw || '{}');
+    } catch {
+      state = { year: nowYear, seq: 0 };
+    }
+    if (!state || typeof state.seq !== 'number') {
+      state = { year: nowYear, seq: 0 };
+    }
+    // reset yearly if year changed
+    if (state.year !== nowYear) {
+      state.year = nowYear;
+      state.seq  = 0;
+    }
+    state.seq += 1;
+
+    // write atomically: write temp then rename
+    const tmp = COUNTER_FILE + '.tmp';
+    await fsp.writeFile(tmp, JSON.stringify(state), 'utf8');
+    await fsp.rename(tmp, COUNTER_FILE);
+
+    return formatWaybillNumber(state.year, state.seq);
+  } finally {
+    await releaseLock();
+  }
+}
+
 
 // Latvian dd.MM.yyyy
 function lvDate(d = new Date()) {
@@ -68,23 +145,23 @@ function numberToWords(n) {
 const cap = s => (s && s[0] ? s[0].toUpperCase() + s.slice(1) : s || '');
 
 // Build the XML string from headers + rows (first row is headers/column names)
-function buildXml(headers, rows) {
-  const esc = s => String(s ?? '')
-    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
-    .replace(/"/g,"&quot;").replace(/'/g,"&apos;");
+// function buildXml(headers, rows) {
+//   const esc = s => String(s ?? '')
+//     .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+//     .replace(/"/g,"&quot;").replace(/'/g,"&apos;");
 
-  let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<Table>\n';
-  xml += '  <Headers>\n';
-  headers.forEach(h => { xml += `    <Header>${esc(h)}</Header>\n`; });
-  xml += '  </Headers>\n  <Rows>\n';
-  rows.forEach(row => {
-    xml += '    <Row>\n';
-    row.forEach((val, i) => xml += `      <Cell col="${i+1}">${esc(val)}</Cell>\n`);
-    xml += '    </Row>\n';
-  });
-  xml += '  </Rows>\n</Table>\n';
-  return xml;
-}
+//   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<Table>\n';
+//   xml += '  <Headers>\n';
+//   headers.forEach(h => { xml += `    <Header>${esc(h)}</Header>\n`; });
+//   xml += '  </Headers>\n  <Rows>\n';
+//   rows.forEach(row => {
+//     xml += '    <Row>\n';
+//     row.forEach((val, i) => xml += `      <Cell col="${i+1}">${esc(val)}</Cell>\n`);
+//     xml += '    </Row>\n';
+//   });
+//   xml += '  </Rows>\n</Table>\n';
+//   return xml;
+// }
 
 // Turn request body into tabular data (headers + rows) for XML
 function buildTableFromBody(data, totals) {
@@ -115,7 +192,7 @@ function buildTableFromBody(data, totals) {
   ];
 
   const docDefaults = {
-    "Dokumenta Nr.":                          data.documentNumber || "0002",
+    "Dokumenta Nr.":                          data.documentNumber || "0000",
     "Dokumenta Nr. (veidlapas sērija)":       "BAL-V/GEN",
     "Dokumenta datums":                       todaysDate,
     "Dokumenta tips (saīsinājums)":           "Rēķins",
@@ -173,7 +250,7 @@ function buildTableFromBody(data, totals) {
       "Rindiņas cena":             netUnit.toFixed(2),
       "Rindiņas cena EUR":         netUnit.toFixed(2),
       "Rindiņas iepirkšanas cena": "",
-      "Rindiņas uzskaites vērtība EUR": (netUnit * quantity).toFixed(2),
+      "Rindiņas uzskaites vērtība EUR": "",//(netUnit * quantity).toFixed(2),
       "Rindiņas atlaides %":       "0",
       "Rindiņas cena ar PVN un atlaidēm": grossUnit.toFixed(2),
       "Rindiņas PVN likme":         (vatRate*100).toFixed(0),
@@ -213,6 +290,13 @@ app.post('/api/waybill', async (req, res) => {
   try {
     const data = req.body; // expects { reciever, reg_number_reciever, recieving_location, products: [ { description, price, quantity?, vat?, price_includes_vat? }, ... ] }
 
+    
+     // Assign waybill/document number if not provided
+    if (!data.documentNumber) {
+      data.documentNumber = await getNextWaybillNumber();  // <-- persists + increments
+    }
+
+
     // Normalize items (also compute line totals for your template)
     const products = (data.products || []).map(item => {
       const quantity  = item.quantity ?? 1;
@@ -237,6 +321,7 @@ app.post('/api/waybill', async (req, res) => {
 
       return {
         ...item,
+        documentNumber:  data.documentNumber,
         description,
         unit:            item.unit ?? 'gab',
         quantity,
@@ -292,6 +377,7 @@ app.post('/api/waybill', async (req, res) => {
       css,
       logoData,
       logoMime,
+      documentNumber: data.documentNumber,
       products,
       sumDisc:      sumDisc.toFixed(2),
       sumNoVatBase: sumNoVatBase.toFixed(2),
