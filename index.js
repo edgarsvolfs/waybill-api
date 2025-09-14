@@ -23,32 +23,27 @@ app.set('views', path.join(__dirname, 'views'));
 app.use('/public', express.static(path.join(__dirname, 'public')));
 
 /* ---------- Helpers ---------- */
-
-// Optional: probe the volume once at boot. Leave it in until you're confident.
-(async () => {
-  try {
-    await fsp.mkdir(COUNTER_DIR, { recursive: true });
-    await fsp.writeFile(path.join(COUNTER_DIR, '.rw-test'), `ok ${Date.now()}`, 'utf8');
-    console.log('✅ Volume write OK at', COUNTER_DIR);
-  } catch (e) {
-    console.error('❌ Volume write FAILED at', COUNTER_DIR, e);
-  }
-})();
-
-
-// Railway volume file creation / editing workaround
-
+// --- define constants first ---
 const COUNTER_DIR  = process.env.COUNTER_DIR || '/data';
 const COUNTER_FILE = path.join(COUNTER_DIR, 'waybill_counter.json');
 const LOCK_DIR     = path.join(COUNTER_DIR, 'waybill_counter.lock');
 
-// simple lock using mkdir: succeeds only if it doesn't exist
+// --- optional: volume write probe (runs once on boot) ---
+(async (dir) => {
+  try {
+    await fsp.mkdir(dir, { recursive: true });
+    await fsp.writeFile(path.join(dir, '.rw-test'), `ok ${Date.now()}`, 'utf8');
+    console.log('✅ Volume write OK at', dir);
+  } catch (e) {
+    console.error('❌ Volume write FAILED at', dir, e);
+  }
+})(COUNTER_DIR);
+
+// --- locking helpers ---
 async function acquireLock(retries = 50, delayMs = 50) {
   for (let i = 0; i < retries; i++) {
-    try {
-      await fsp.mkdir(LOCK_DIR);
-      return; // got the lock
-    } catch (err) {
+    try { await fsp.mkdir(LOCK_DIR); return; }
+    catch (err) {
       if (err.code !== 'EEXIST') throw err;
       await new Promise(r => setTimeout(r, delayMs));
     }
@@ -57,7 +52,7 @@ async function acquireLock(retries = 50, delayMs = 50) {
 }
 
 async function releaseLock() {
-  try { await fsp.rmdir(LOCK_DIR); } catch {}
+  try { await fsp.rm(LOCK_DIR, { force: true }); } catch {}
 }
 
 async function ensureCounterFile() {
@@ -66,8 +61,7 @@ async function ensureCounterFile() {
     await fsp.access(COUNTER_FILE, fs.constants.F_OK);
   } catch {
     const year = new Date().getFullYear();
-    const initial = { year, seq: 0 };
-    await fsp.writeFile(COUNTER_FILE, JSON.stringify(initial), 'utf8');
+    await fsp.writeFile(COUNTER_FILE, JSON.stringify({ year, seq: 0 }), 'utf8');
   }
 }
 
@@ -80,24 +74,17 @@ async function getNextWaybillNumber() {
   await acquireLock();
   try {
     const nowYear = new Date().getFullYear();
-    let state;
+    let state = { year: nowYear, seq: 0 };
     try {
       const raw = await fsp.readFile(COUNTER_FILE, 'utf8');
       state = JSON.parse(raw || '{}');
-    } catch {
-      state = { year: nowYear, seq: 0 };
-    }
-    if (!state || typeof state.seq !== 'number') {
-      state = { year: nowYear, seq: 0 };
-    }
-    // reset yearly if year changed
-    if (state.year !== nowYear) {
-      state.year = nowYear;
-      state.seq  = 0;
-    }
+      if (typeof state.seq !== 'number') state.seq = 0;
+      if (typeof state.year !== 'number') state.year = nowYear;
+    } catch {} // use defaults
+
+    if (state.year !== nowYear) { state.year = nowYear; state.seq = 0; }
     state.seq += 1;
 
-    // write atomically: write temp then rename
     const tmp = COUNTER_FILE + '.tmp';
     await fsp.writeFile(tmp, JSON.stringify(state), 'utf8');
     await fsp.rename(tmp, COUNTER_FILE);
