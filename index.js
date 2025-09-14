@@ -24,7 +24,16 @@ app.use('/public', express.static(path.join(__dirname, 'public')));
 
 /* ---------- Helpers ---------- */
 
-
+// Optional: probe the volume once at boot. Leave it in until you're confident.
+(async () => {
+  try {
+    await fsp.mkdir(COUNTER_DIR, { recursive: true });
+    await fsp.writeFile(path.join(COUNTER_DIR, '.rw-test'), `ok ${Date.now()}`, 'utf8');
+    console.log('✅ Volume write OK at', COUNTER_DIR);
+  } catch (e) {
+    console.error('❌ Volume write FAILED at', COUNTER_DIR, e);
+  }
+})();
 
 
 // Railway volume file creation / editing workaround
