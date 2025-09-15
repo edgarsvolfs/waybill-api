@@ -29,17 +29,17 @@ const COUNTER_FILE = path.join(COUNTER_DIR, 'waybill_counter.json');
 const LOCK_DIR     = path.join(COUNTER_DIR, 'waybill_counter.lock');
 const LOCK_FILE = path.join(COUNTER_DIR, 'waybill_counter.lock');
 
-// --- optional: volume write probe (runs once on boot) ---
-// (async (dir) => {
-//   try {
-//     await fsp.mkdir(dir, { recursive: true });
-//     await fsp.writeFile(path.join(dir, '.rw-test'), `ok ${Date.now()}`, 'utf8');
-//     console.log('✅ Volume write OK at', dir);
-//   } catch (e) {
-//     console.error('❌ Volume write FAILED at', dir, e);
-//   }
-// })(COUNTER_DIR);
-
+if (process.env.ENABLE_VOLUME_PROBE === '1') {
+  (async (dir) => {
+    try {
+      await fsp.mkdir(dir, { recursive: true });
+      await fsp.writeFile(path.join(dir, '.rw-test'), `ok ${Date.now()}`, 'utf8');
+      console.log('✅ Volume write OK at', dir);
+    } catch (e) {
+      console.error('❌ Volume write FAILED at', dir, e);
+    }
+  })(COUNTER_DIR);
+}
 // ---- one-time startup cleanup: remove any leftover lock (and legacy dir) ----
 (async () => {
   try {
