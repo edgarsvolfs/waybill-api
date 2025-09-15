@@ -73,6 +73,24 @@ if (process.env.ENABLE_VOLUME_PROBE === '1') {
   }
 })();
 
+
+async function ensureCounterFile() {
+  try {
+    // make sure the directory exists
+    await fsp.mkdir(COUNTER_DIR, { recursive: true });
+
+    // check if file exists
+    await fsp.access(COUNTER_FILE, fs.constants.F_OK);
+  } catch {
+    // if it doesn't exist, initialize with current year + seq = 0
+    const year = new Date().getFullYear();
+    const initial = { year, seq: 0 };
+
+    await fsp.writeFile(COUNTER_FILE, JSON.stringify(initial), 'utf8');
+    console.log(`🆕 Created counter file at ${COUNTER_FILE}`);
+  }
+}
+
 // --- file-lock helpers ---
 async function acquireLock({
   timeoutMs = 15000,
