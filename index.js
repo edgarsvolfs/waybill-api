@@ -127,11 +127,51 @@ process.on('SIGTERM', () => {
   releaseLock().catch(() => {});
 });
 
-// --- your formatting (4 digits) ---
-function formatWaybillNumber(year, seq) {
+function formatWaybillNumber(seq) {
   return String(seq).padStart(4, '0');
 }
 
+async function getNextWaybillNumber() {
+  await ensureCounterFile();     // makes sure COUNTER_FILE exists
+  await acquireLock();           // file-based lock to prevent races
+  try {
+    const nowYear = new Date().getFullYear();
+
+    // 1) read current state
+    let state = { year: nowYear, seq: 0 };
+    try {
+      const raw = await fsp.readFile(COUNTER_FILE, 'utf8');
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (parsed && typeof parsed.seq === 'number') {
+        state = {
+          year: typeof parsed.year === 'number' ? parsed.year : nowYear,
+          seq:  parsed.seq
+        };
+      }
+    } catch {
+      // first run / empty file → keep defaults
+    }
+
+    // 2) reset on new year (keeps the number clean while still yearly scoped)
+    if (state.year !== nowYear) {
+      state.year = nowYear;
+      state.seq  = 0;
+    }
+
+    // 3) increment
+    state.seq += 1;
+
+    // 4) atomic write (tmp + rename)
+    const tmp = COUNTER_FILE + '.tmp';
+    await fsp.writeFile(tmp, JSON.stringify(state), 'utf8');
+    await fsp.rename(tmp, COUNTER_FILE);
+
+    // 5) return the padded number (no prefix/year)
+    return formatWaybillNumber(state.seq);
+  } finally {
+    await releaseLock();
+  }
+}
 // In your getNextWaybillNumber(), keep using acquireLock()/releaseLock()
 // around the read -> increment -> atomic write of COUNTER_FILE.
 
