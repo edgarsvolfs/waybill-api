@@ -24,15 +24,14 @@ app.use('/public', express.static(path.join(__dirname, 'public')));
 
 /* ---------- Helpers ---------- */
 // --- define constants first ---
+// --- constants ---
+//
 const COUNTER_DIR  = process.env.COUNTER_DIR || '/data';
 const COUNTER_FILE = path.join(COUNTER_DIR, 'waybill_counter.json');
-// ---- lock file path (file-based lock only) ----
-// after: const fs = require('fs'); const fsp = fs.promises; const path = require('path');
-// and after you define COUNTER_DIR / COUNTER_FILE
 
-// NEW file-based lock path (note the different name to avoid the old dir name)
-const LEGACY_LOCK_DIR = path.join(COUNTER_DIR, 'waybill_counter.lock');     // old directory lock
-const LOCK_FILE       = path.join(COUNTER_DIR, 'waybill_counter.lockfile'); // new file lock
+// legacy dir-lock (from old code) and new file-lock
+const LEGACY_LOCK_PATH = path.join(COUNTER_DIR, 'waybill_counter.lock');     // old DIR
+const LOCK_FILE        = path.join(COUNTER_DIR, 'waybill_counter.lockfile'); // new FILE
 
 // optional: only while debugging
 if (process.env.ENABLE_VOLUME_PROBE === '1') {
@@ -46,12 +45,13 @@ if (process.env.ENABLE_VOLUME_PROBE === '1') {
     }
   })(COUNTER_DIR);
 }
-// Ensure the volume directory exists first
-await fs.promises.mkdir(COUNTER_DIR, { recursive: true });
 
-// --- startup cleanup ---
+// --- startup init & cleanup (wrap in IIFE: no top-level await) ---
 (async () => {
   try {
+    // ensure the /data dir exists
+    await fsp.mkdir(COUNTER_DIR, { recursive: true });
+
     // remove legacy dir/file if present
     try {
       const s = await fsp.stat(LEGACY_LOCK_PATH);
@@ -73,14 +73,13 @@ await fs.promises.mkdir(COUNTER_DIR, { recursive: true });
   }
 })();
 
-// ---- acquire/release using the new file path ----
+// --- file-lock helpers ---
 async function acquireLock({
   timeoutMs = 15000,
   retryMs   = 25,
   staleMs   = 5000
 } = {}) {
   const start = Date.now();
-
   while (true) {
     try {
       const fh = await fsp.open(LOCK_FILE, 'wx');         // atomic create (fails if exists)
@@ -92,14 +91,13 @@ async function acquireLock({
 
       // check staleness
       try {
-        const stat = await fsp.stat(LOCK_FILE);
-        const age  = Date.now() - stat.mtimeMs;
-        if (age > staleMs) {
+        const st = await fsp.stat(LOCK_FILE);
+        if (Date.now() - st.mtimeMs > staleMs) {
           await fsp.rm(LOCK_FILE, { force: true });
           continue;
         }
       } catch {
-        // couldn't stat/remove, just retry
+        // couldn't stat/remove; just retry
       }
 
       if (Date.now() - start > timeoutMs) {
@@ -114,7 +112,6 @@ async function acquireLock({
           throw new Error('Could not acquire counter lock');
         }
       }
-
       await new Promise(r => setTimeout(r, retryMs));
     }
   }
@@ -124,16 +121,19 @@ async function releaseLock() {
   try { await fsp.rm(LOCK_FILE, { force: true }); } catch {}
 }
 
-// optional: on shutdown, try to release (don’t force-exit)
+// optional: log & try release on shutdown (don’t force-exit)
 process.on('SIGTERM', () => {
   console.log('Received SIGTERM; releasing waybill lock if present…');
   releaseLock().catch(() => {});
 });
 
-//
+// --- your formatting (4 digits) ---
 function formatWaybillNumber(year, seq) {
   return String(seq).padStart(4, '0');
 }
+
+// In your getNextWaybillNumber(), keep using acquireLock()/releaseLock()
+// around the read -> increment -> atomic write of COUNTER_FILE.
 
 // Latvian dd.MM.yyyy
 function lvDate(d = new Date()) {
