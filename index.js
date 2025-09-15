@@ -30,51 +30,72 @@ const LOCK_DIR     = path.join(COUNTER_DIR, 'waybill_counter.lock');
 const LOCK_FILE = path.join(COUNTER_DIR, 'waybill_counter.lock');
 
 // --- optional: volume write probe (runs once on boot) ---
-(async (dir) => {
-  try {
-    await fsp.mkdir(dir, { recursive: true });
-    await fsp.writeFile(path.join(dir, '.rw-test'), `ok ${Date.now()}`, 'utf8');
-    console.log('✅ Volume write OK at', dir);
-  } catch (e) {
-    console.error('❌ Volume write FAILED at', dir, e);
-  }
-})(COUNTER_DIR);
+// (async (dir) => {
+//   try {
+//     await fsp.mkdir(dir, { recursive: true });
+//     await fsp.writeFile(path.join(dir, '.rw-test'), `ok ${Date.now()}`, 'utf8');
+//     console.log('✅ Volume write OK at', dir);
+//   } catch (e) {
+//     console.error('❌ Volume write FAILED at', dir, e);
+//   }
+// })(COUNTER_DIR);
 
-// --- locking helpers ---
-// Acquire an exclusive lock by creating the file with O_EXCL.
-// If the file already exists, wait, and optionally break a stale lock.
+// ---- one-time startup cleanup: remove any leftover lock (and legacy dir) ----
+(async () => {
+  try {
+    await fsp.rm(LOCK_FILE, { force: true });                    // remove file lock if present
+    await fsp.rm(path.join(COUNTER_DIR, 'waybill_counter.lock'), // legacy dir lock path (older code)
+                 { recursive: true, force: true });
+    // optional: log
+    console.log('🔓 cleared leftover waybill lock(s) at startup');
+  } catch (e) {
+    console.warn('startup lock cleanup warn:', e.message);
+  }
+})();
+
+// ---- improved acquire/release with better defaults ----
 async function acquireLock({
-  timeoutMs = 5000,   // how long to keep trying
-  retryMs   = 50,     // backoff between tries
-  staleMs   = 30000   // consider a lock stale after 30s
+  timeoutMs = 15000,  // give enough time under load
+  retryMs   = 25,     // smooth backoff
+  staleMs   = 5000    // treat >5s as stale across deploys
 } = {}) {
   const start = Date.now();
 
   while (true) {
     try {
-      const fh = await fsp.open(LOCK_FILE, 'wx'); // atomic create
-      await fh.writeFile(`${process.pid}:${Date.now()}`, 'utf8');
+      const fh = await fsp.open(LOCK_FILE, 'wx');        // atomic create
+      await fh.writeFile(`${process.pid}:${Date.now()}`); // debug info
       await fh.close();
-      return; // got the lock
+      return; // got it
     } catch (err) {
       if (err.code !== 'EEXIST') throw err;
 
-      // lock exists — check for staleness
+      // check for staleness
       try {
         const stat = await fsp.stat(LOCK_FILE);
         const age  = Date.now() - stat.mtimeMs;
         if (age > staleMs) {
-          // stale lock — remove and retry immediately
-          await fsp.rm(LOCK_FILE, { force: true });
+          await fsp.rm(LOCK_FILE, { force: true });      // stale → clear
           continue;
         }
       } catch {
-        // If stat/remove fails, just fall through to retry
+        // if we can't stat/remove, just retry
       }
 
       if (Date.now() - start > timeoutMs) {
-        throw new Error('Could not acquire counter lock');
+        // final safety: forcibly clear and attempt once
+        try { await fsp.rm(LOCK_FILE, { force: true }); } catch {}
+        // attempt one last time immediately
+        try {
+          const fh = await fsp.open(LOCK_FILE, 'wx');
+          await fh.writeFile(`${process.pid}:${Date.now()}`);
+          await fh.close();
+          return;
+        } catch (e2) {
+          throw new Error('Could not acquire counter lock');
+        }
       }
+
       await new Promise(r => setTimeout(r, retryMs));
     }
   }
@@ -84,9 +105,10 @@ async function releaseLock() {
   try { await fsp.rm(LOCK_FILE, { force: true }); } catch {}
 }
 
-async function releaseLock() {
-  try { await fsp.rm(LOCK_DIR, { force: true }); } catch {}
-}
+// optional: graceful stop releases lock
+process.on('SIGTERM', () => {
+  releaseLock().finally(() => process.exit(0));
+});
 
 async function ensureCounterFile() {
   try {
