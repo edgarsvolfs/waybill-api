@@ -235,6 +235,14 @@ function numberToWords(n) {
   return t(n);
 }
 
+function flipName(fullName) {
+  const parts = fullName.trim().split(/\s+/); // split by any whitespace
+  if (parts.length < 2) return fullName;      // nothing to flip
+  const first = parts.shift();                // take first
+  const last  = parts.pop();                  // take last
+  return [last, ...parts, first].join(' ');
+}
+
 const cap = s => (s && s[0] ? s[0].toUpperCase() + s.slice(1) : s || '');
 
 // Build the XML string from headers + rows (first row is headers/column names)
@@ -300,7 +308,7 @@ function buildTableFromBody(data, totals) {
     "Dokumenta partnera PVN maksātāja valsts":"",
     "Dokumenta partnera PVN numurs":          "",
     "Dokumenta partnera kontaktpersona":      "",
-    "Dokumenta darbinieka/aģenta nosaukums":  data.agent,
+    "Dokumenta darbinieka/aģenta nosaukums":  flipName(data.agent),
     "Dokumenta uzņēmuma noliktavas adrese":   "",
     "Dokumenta partnera noliktavas adrese":   data.recieving_location || "",
     "Dokumenta PVN likme (noklusētā)":       "21",
@@ -368,10 +376,13 @@ function buildTableFromBody(data, totals) {
   });
 
   const baseFilename = (data.documentNumber || `Rekins__${(data.reciever||'waybill').trim()}`).toString();
+  console.log('reciever ', data.reciever);
+  console.log('baseFilename ', baseFilename);
   const asciiFilename = baseFilename
   .normalize("NFD")                   // split base + diacritic
   .replace(/[\u0300-\u036f]/g, "")    // remove diacritics
   .replace(/[^\x20-\x7E]/g, "_");     // replace any non-ASCII with _
+  console.log('asciiFilename ', asciiFilename);
 
 
 
