@@ -377,7 +377,7 @@ function buildTableFromBody(data, totals) {
 
   
   const baseFilename = (`Rekins__${(data.reciever).trim()}`).toString();
-  conmsole.log('receiver:', data.reciever, '-> baseFilename:', baseFilename);
+  console.log('receiver:', data.reciever, '-> baseFilename:', baseFilename);
   const asciiFilename = baseFilename
   .normalize("NFD")                   // split base + diacritic
   .replace(/[\u0300-\u036f]/g, "")    // remove diacritics
