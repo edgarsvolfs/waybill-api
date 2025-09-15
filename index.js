@@ -46,14 +46,27 @@ if (process.env.ENABLE_VOLUME_PROBE === '1') {
     }
   })(COUNTER_DIR);
 }
+// Ensure the volume directory exists first
+await fs.promises.mkdir(COUNTER_DIR, { recursive: true });
 
-// --- startup cleanup: nuke both the legacy **dir** and any stale file lock ---
+// --- startup cleanup ---
 (async () => {
   try {
-    // legacy dir-based lock from older code
-    await fsp.rm(LEGACY_LOCK_DIR, { recursive: true, force: true });
-    // stale file lock from newer code (if any)
-    await fsp.rm(LOCK_FILE, { recursive: false, force: true });
+    // remove legacy dir/file if present
+    try {
+      const s = await fsp.stat(LEGACY_LOCK_PATH);
+      if (s.isDirectory()) {
+        await fsp.rm(LEGACY_LOCK_PATH, { recursive: true, force: true });
+      } else {
+        await fsp.unlink(LEGACY_LOCK_PATH).catch(() => {});
+      }
+    } catch (e) {
+      if (e.code !== 'ENOENT') console.warn('legacy lock cleanup warn:', e.message);
+    }
+
+    // also clear any stale new file lock
+    await fsp.rm(LOCK_FILE, { force: true });
+
     console.log('🔓 cleared leftover waybill locks at startup');
   } catch (e) {
     console.warn('startup lock cleanup warn:', e.message);
