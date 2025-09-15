@@ -27,9 +27,14 @@ app.use('/public', express.static(path.join(__dirname, 'public')));
 const COUNTER_DIR  = process.env.COUNTER_DIR || '/data';
 const COUNTER_FILE = path.join(COUNTER_DIR, 'waybill_counter.json');
 // ---- lock file path (file-based lock only) ----
-const LOCK_FILE = path.join(COUNTER_DIR, 'waybill_counter.lock');
+// after: const fs = require('fs'); const fsp = fs.promises; const path = require('path');
+// and after you define COUNTER_DIR / COUNTER_FILE
 
-// ---- optional: volume probe (kept behind flag) ----
+// NEW file-based lock path (note the different name to avoid the old dir name)
+const LEGACY_LOCK_DIR = path.join(COUNTER_DIR, 'waybill_counter.lock');     // old directory lock
+const LOCK_FILE       = path.join(COUNTER_DIR, 'waybill_counter.lockfile'); // new file lock
+
+// optional: only while debugging
 if (process.env.ENABLE_VOLUME_PROBE === '1') {
   (async (dir) => {
     try {
@@ -42,47 +47,50 @@ if (process.env.ENABLE_VOLUME_PROBE === '1') {
   })(COUNTER_DIR);
 }
 
-// ---- one-time startup cleanup: remove any leftover lock file ----
+// --- startup cleanup: nuke both the legacy **dir** and any stale file lock ---
 (async () => {
   try {
-    await fsp.rm(LOCK_FILE, { force: true });   // remove file lock if present
-    console.log('🔓 cleared leftover waybill lock at startup');
+    // legacy dir-based lock from older code
+    await fsp.rm(LEGACY_LOCK_DIR, { recursive: true, force: true });
+    // stale file lock from newer code (if any)
+    await fsp.rm(LOCK_FILE, { recursive: false, force: true });
+    console.log('🔓 cleared leftover waybill locks at startup');
   } catch (e) {
     console.warn('startup lock cleanup warn:', e.message);
   }
 })();
 
-// ---- acquire/release with staleness + generous timeout ----
+// ---- acquire/release using the new file path ----
 async function acquireLock({
-  timeoutMs = 15000,  // how long to keep trying
-  retryMs   = 25,     // backoff between tries
-  staleMs   = 5000    // consider a lock stale after 5s (covers rolling deploys)
+  timeoutMs = 15000,
+  retryMs   = 25,
+  staleMs   = 5000
 } = {}) {
   const start = Date.now();
 
   while (true) {
     try {
-      const fh = await fsp.open(LOCK_FILE, 'wx');  // atomic create, fails if exists
+      const fh = await fsp.open(LOCK_FILE, 'wx');         // atomic create (fails if exists)
       await fh.writeFile(`${process.pid}:${Date.now()}`, 'utf8');
       await fh.close();
       return; // got the lock
     } catch (err) {
       if (err.code !== 'EEXIST') throw err;
 
-      // lock exists — check for staleness
+      // check staleness
       try {
         const stat = await fsp.stat(LOCK_FILE);
         const age  = Date.now() - stat.mtimeMs;
         if (age > staleMs) {
-          await fsp.rm(LOCK_FILE, { force: true }); // stale → clear
+          await fsp.rm(LOCK_FILE, { force: true });
           continue;
         }
       } catch {
-        // couldn't stat/remove; just retry
+        // couldn't stat/remove, just retry
       }
 
       if (Date.now() - start > timeoutMs) {
-        // final safety: forcibly clear and try once more
+        // last resort: force clear and one more attempt
         try { await fsp.rm(LOCK_FILE, { force: true }); } catch {}
         try {
           const fh = await fsp.open(LOCK_FILE, 'wx');
@@ -103,43 +111,16 @@ async function releaseLock() {
   try { await fsp.rm(LOCK_FILE, { force: true }); } catch {}
 }
 
-// Optional: log & attempt to free lock on shutdown; don't force-exit here.
+// optional: on shutdown, try to release (don’t force-exit)
 process.on('SIGTERM', () => {
   console.log('Received SIGTERM; releasing waybill lock if present…');
   releaseLock().catch(() => {});
 });
 
+//
 function formatWaybillNumber(year, seq) {
   return String(seq).padStart(4, '0');
 }
-
-
-async function getNextWaybillNumber() {
-  await ensureCounterFile();
-  await acquireLock();
-  try {
-    const nowYear = new Date().getFullYear();
-    let state = { year: nowYear, seq: 0 };
-    try {
-      const raw = await fsp.readFile(COUNTER_FILE, 'utf8');
-      state = JSON.parse(raw || '{}');
-      if (typeof state.seq !== 'number') state.seq = 0;
-      if (typeof state.year !== 'number') state.year = nowYear;
-    } catch {} // use defaults
-
-    if (state.year !== nowYear) { state.year = nowYear; state.seq = 0; }
-    state.seq += 1;
-
-    const tmp = COUNTER_FILE + '.tmp';
-    await fsp.writeFile(tmp, JSON.stringify(state), 'utf8');
-    await fsp.rename(tmp, COUNTER_FILE);
-
-    return formatWaybillNumber(state.year, state.seq);
-  } finally {
-    await releaseLock();
-  }
-}
-
 
 // Latvian dd.MM.yyyy
 function lvDate(d = new Date()) {
