@@ -1,0 +1,3 @@
+This project is a Node.js / Express REST API that generates PDF invoices and waybills alongside companion Excel files (.xlsx) based on structured JSON input for importing data into the "Jumis" accounting system.
+The API is designed to act as a backend automation worker: you send it normalized invoice data, and it returns ready-to-use accounting documents that are consistent and localized (Latvian).
+The service is particularly designed to integrate with workflow automation platforms like Make.com or Zapier, where incoming emails → parsed JSON → API call → resulting PDF + Excel files can all happen without manual intervention.
