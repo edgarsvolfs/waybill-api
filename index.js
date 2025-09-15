@@ -66,8 +66,9 @@ async function ensureCounterFile() {
 }
 
 function formatWaybillNumber(year, seq) {
-  return `BAL-V/${year}/${String(seq).padStart(5, '0')}`;
+  return String(seq).padStart(4, '0');
 }
+
 
 async function getNextWaybillNumber() {
   await ensureCounterFile();
