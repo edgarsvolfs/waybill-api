@@ -375,15 +375,11 @@ function buildTableFromBody(data, totals) {
     return headers.map(h => rowMap[h] ?? "");
   });
 
-  const baseFilename = (data.documentNumber || `Rekins__${(data.reciever||'waybill').trim()}`).toString();
-  console.log('reciever ', data.reciever);
-  console.log('baseFilename ', baseFilename);
+  const baseFilename = (`Rekins__${(data.reciever||'waybill').trim()}`).toString();
   const asciiFilename = baseFilename
   .normalize("NFD")                   // split base + diacritic
   .replace(/[\u0300-\u036f]/g, "")    // remove diacritics
   .replace(/[^\x20-\x7E]/g, "_");     // replace any non-ASCII with _
-  console.log('asciiFilename ', asciiFilename);
-
 
 
   return { headers, rows, asciiFilename };
