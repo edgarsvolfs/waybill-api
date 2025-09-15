@@ -27,6 +27,7 @@ app.use('/public', express.static(path.join(__dirname, 'public')));
 const COUNTER_DIR  = process.env.COUNTER_DIR || '/data';
 const COUNTER_FILE = path.join(COUNTER_DIR, 'waybill_counter.json');
 const LOCK_DIR     = path.join(COUNTER_DIR, 'waybill_counter.lock');
+const LOCK_FILE = path.join(COUNTER_DIR, 'waybill_counter.lock');
 
 // --- optional: volume write probe (runs once on boot) ---
 (async (dir) => {
@@ -40,15 +41,47 @@ const LOCK_DIR     = path.join(COUNTER_DIR, 'waybill_counter.lock');
 })(COUNTER_DIR);
 
 // --- locking helpers ---
-async function acquireLock(retries = 50, delayMs = 50) {
-  for (let i = 0; i < retries; i++) {
-    try { await fsp.mkdir(LOCK_DIR); return; }
-    catch (err) {
+// Acquire an exclusive lock by creating the file with O_EXCL.
+// If the file already exists, wait, and optionally break a stale lock.
+async function acquireLock({
+  timeoutMs = 5000,   // how long to keep trying
+  retryMs   = 50,     // backoff between tries
+  staleMs   = 30000   // consider a lock stale after 30s
+} = {}) {
+  const start = Date.now();
+
+  while (true) {
+    try {
+      const fh = await fsp.open(LOCK_FILE, 'wx'); // atomic create
+      await fh.writeFile(`${process.pid}:${Date.now()}`, 'utf8');
+      await fh.close();
+      return; // got the lock
+    } catch (err) {
       if (err.code !== 'EEXIST') throw err;
-      await new Promise(r => setTimeout(r, delayMs));
+
+      // lock exists — check for staleness
+      try {
+        const stat = await fsp.stat(LOCK_FILE);
+        const age  = Date.now() - stat.mtimeMs;
+        if (age > staleMs) {
+          // stale lock — remove and retry immediately
+          await fsp.rm(LOCK_FILE, { force: true });
+          continue;
+        }
+      } catch {
+        // If stat/remove fails, just fall through to retry
+      }
+
+      if (Date.now() - start > timeoutMs) {
+        throw new Error('Could not acquire counter lock');
+      }
+      await new Promise(r => setTimeout(r, retryMs));
     }
   }
-  throw new Error('Could not acquire counter lock');
+}
+
+async function releaseLock() {
+  try { await fsp.rm(LOCK_FILE, { force: true }); } catch {}
 }
 
 async function releaseLock() {
