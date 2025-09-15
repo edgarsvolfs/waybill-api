@@ -26,9 +26,10 @@ app.use('/public', express.static(path.join(__dirname, 'public')));
 // --- define constants first ---
 const COUNTER_DIR  = process.env.COUNTER_DIR || '/data';
 const COUNTER_FILE = path.join(COUNTER_DIR, 'waybill_counter.json');
-const LOCK_DIR     = path.join(COUNTER_DIR, 'waybill_counter.lock');
+// ---- lock file path (file-based lock only) ----
 const LOCK_FILE = path.join(COUNTER_DIR, 'waybill_counter.lock');
 
+// ---- optional: volume probe (kept behind flag) ----
 if (process.env.ENABLE_VOLUME_PROBE === '1') {
   (async (dir) => {
     try {
@@ -40,58 +41,55 @@ if (process.env.ENABLE_VOLUME_PROBE === '1') {
     }
   })(COUNTER_DIR);
 }
-// ---- one-time startup cleanup: remove any leftover lock (and legacy dir) ----
+
+// ---- one-time startup cleanup: remove any leftover lock file ----
 (async () => {
   try {
-    await fsp.rm(LOCK_FILE, { force: true });                    // remove file lock if present
-    await fsp.rm(path.join(COUNTER_DIR, 'waybill_counter.lock'), // legacy dir lock path (older code)
-                 { recursive: true, force: true });
-    // optional: log
-    console.log('🔓 cleared leftover waybill lock(s) at startup');
+    await fsp.rm(LOCK_FILE, { force: true });   // remove file lock if present
+    console.log('🔓 cleared leftover waybill lock at startup');
   } catch (e) {
     console.warn('startup lock cleanup warn:', e.message);
   }
 })();
 
-// ---- improved acquire/release with better defaults ----
+// ---- acquire/release with staleness + generous timeout ----
 async function acquireLock({
-  timeoutMs = 15000,  // give enough time under load
-  retryMs   = 25,     // smooth backoff
-  staleMs   = 5000    // treat >5s as stale across deploys
+  timeoutMs = 15000,  // how long to keep trying
+  retryMs   = 25,     // backoff between tries
+  staleMs   = 5000    // consider a lock stale after 5s (covers rolling deploys)
 } = {}) {
   const start = Date.now();
 
   while (true) {
     try {
-      const fh = await fsp.open(LOCK_FILE, 'wx');        // atomic create
-      await fh.writeFile(`${process.pid}:${Date.now()}`); // debug info
+      const fh = await fsp.open(LOCK_FILE, 'wx');  // atomic create, fails if exists
+      await fh.writeFile(`${process.pid}:${Date.now()}`, 'utf8');
       await fh.close();
-      return; // got it
+      return; // got the lock
     } catch (err) {
       if (err.code !== 'EEXIST') throw err;
 
-      // check for staleness
+      // lock exists — check for staleness
       try {
         const stat = await fsp.stat(LOCK_FILE);
         const age  = Date.now() - stat.mtimeMs;
         if (age > staleMs) {
-          await fsp.rm(LOCK_FILE, { force: true });      // stale → clear
+          await fsp.rm(LOCK_FILE, { force: true }); // stale → clear
           continue;
         }
       } catch {
-        // if we can't stat/remove, just retry
+        // couldn't stat/remove; just retry
       }
 
       if (Date.now() - start > timeoutMs) {
-        // final safety: forcibly clear and attempt once
+        // final safety: forcibly clear and try once more
         try { await fsp.rm(LOCK_FILE, { force: true }); } catch {}
-        // attempt one last time immediately
         try {
           const fh = await fsp.open(LOCK_FILE, 'wx');
-          await fh.writeFile(`${process.pid}:${Date.now()}`);
+          await fh.writeFile(`${process.pid}:${Date.now()}`, 'utf8');
           await fh.close();
           return;
-        } catch (e2) {
+        } catch {
           throw new Error('Could not acquire counter lock');
         }
       }
@@ -105,20 +103,11 @@ async function releaseLock() {
   try { await fsp.rm(LOCK_FILE, { force: true }); } catch {}
 }
 
-// optional: graceful stop releases lock
+// Optional: log & attempt to free lock on shutdown; don't force-exit here.
 process.on('SIGTERM', () => {
-  releaseLock().finally(() => process.exit(0));
+  console.log('Received SIGTERM; releasing waybill lock if present…');
+  releaseLock().catch(() => {});
 });
-
-async function ensureCounterFile() {
-  try {
-    await fsp.mkdir(COUNTER_DIR, { recursive: true });
-    await fsp.access(COUNTER_FILE, fs.constants.F_OK);
-  } catch {
-    const year = new Date().getFullYear();
-    await fsp.writeFile(COUNTER_FILE, JSON.stringify({ year, seq: 0 }), 'utf8');
-  }
-}
 
 function formatWaybillNumber(year, seq) {
   return String(seq).padStart(4, '0');
