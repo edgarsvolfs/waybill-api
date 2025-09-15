@@ -375,7 +375,9 @@ function buildTableFromBody(data, totals) {
     return headers.map(h => rowMap[h] ?? "");
   });
 
-  const baseFilename = (`Rekins__${(data.reciever||'waybill').trim()}`).toString();
+  
+  const baseFilename = (`Rekins__${(data.reciever).trim()}`).toString();
+  conmsole.log('receiver:', data.reciever, '-> baseFilename:', baseFilename);
   const asciiFilename = baseFilename
   .normalize("NFD")                   // split base + diacritic
   .replace(/[\u0300-\u036f]/g, "")    // remove diacritics
