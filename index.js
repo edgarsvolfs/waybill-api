@@ -209,6 +209,24 @@ function lvDate(d = new Date()) {
     return XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' });
   }
 
+// uses SheetJS (XLSX) and path/fs as in your project
+function saveTwoSheetXlsx({ sheet1, sheet2, asciiFilename }, outputDir = "./") {
+  const wb = XLSX.utils.book_new();
+
+  const ws1 = XLSX.utils.aoa_to_sheet([ sheet1.headers, ...sheet1.rows ]);
+  XLSX.utils.book_append_sheet(wb, ws1, sheet1.name);
+
+  const ws2 = XLSX.utils.aoa_to_sheet([ sheet2.headers, ...sheet2.rows ]);
+  XLSX.utils.book_append_sheet(wb, ws2, sheet2.name);
+
+  const fullPath = path.join(outputDir, `${asciiFilename}.xlsx`);
+  XLSX.writeFile(wb, fullPath, { bookType: 'xlsx' });
+
+  return fullPath; // in case you want to zip/send it
+}
+
+
+
 // Basic LV number-to-words (from your code, lightly tidied)
 function numberToWords(n) {
   if (n < 0) return '';
@@ -245,33 +263,19 @@ function flipName(fullName) {
 
 const cap = s => (s && s[0] ? s[0].toUpperCase() + s.slice(1) : s || '');
 
-// Build the XML string from headers + rows (first row is headers/column names)
-// function buildXml(headers, rows) {
-//   const esc = s => String(s ?? '')
-//     .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
-//     .replace(/"/g,"&quot;").replace(/'/g,"&apos;");
 
-//   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<Table>\n';
-//   xml += '  <Headers>\n';
-//   headers.forEach(h => { xml += `    <Header>${esc(h)}</Header>\n`; });
-//   xml += '  </Headers>\n  <Rows>\n';
-//   rows.forEach(row => {
-//     xml += '    <Row>\n';
-//     row.forEach((val, i) => xml += `      <Cell col="${i+1}">${esc(val)}</Cell>\n`);
-//     xml += '    </Row>\n';
-//   });
-//   xml += '  </Rows>\n</Table>\n';
-//   return xml;
-// }
-
-// Turn request body into tabular data (headers + rows) for XML
+// Turn request body into AOAs for TWO sheets:
+//  - sheet1: "Noliktavas dokumenti" (full import schema, with "Noliktavas dokumenta ID" first)
+//  - sheet2: "Preces" (per-line simplified overview)
 function buildTableFromBody(data, totals) {
   const {
     sumVatBase, vatAmount, totalCost, sumDisc,
     todaysDate, payment_date_due
   } = totals;
 
-  const headers = [
+  // ---------- SHEET 1: Noliktavas dokumenti ----------
+  const headers1 = [
+    "Noliktavas dokumenta ID",
     "Dokumenta Nr.","Dokumenta Nr. (veidlapas sērija)","Dokumenta datums","Dokumenta tips (saīsinājums)","Dokumenta veids",
     "Dokumenta valūta","Dokumenta valūtas kurss","Dokumenta uzņēmuma PVN maksātāja valsts","Dokumenta uzņēmuma PVN numurs",
     "Dokumenta partnera nosaukums","Dokumenta partnera reģ.nr./pers.kods","Dokumenta partnera e-pasts",
@@ -292,49 +296,79 @@ function buildTableFromBody(data, totals) {
     "PVN izvērsums - apliekamā summa","PVN izvērsums - PVN","PVN izvērsums - PVN likme"
   ];
 
+  // ---------- SHEET 2: Preces (exact columns you requested) ----------
+  const headers2 = [
+    "Noliktavas dokumenta ID",
+    "Rindiņas cena",
+    "Rindiņas preces kods",
+    "Rindiņas uzskaites grupa (saīsinājums)",
+    "Rindiņas preces svītrkods",
+    "Rindiņas preces nosaukums",
+    "Rindiņas preces papildkods",
+    "Rindiņas mērvienība",
+    "Rindiņas daudzums",
+    "Rindiņas uzskaites vērtība EUR",
+    "Rindiņas atlaides %",
+    "Rindiņas PVN likme",
+    "Rindiņas preces izcelsmes valsts kods",
+    "Rindiņas preces KN kods",
+    "Rindiņas akcīzes nodoklis",
+    "Rindiņas derīguma termiņš",
+    "Rindiņas sertifikāts",
+    "Rindiņas noliktava (no kuras paņem preci)",
+    "Rindiņas noliktava (kurā novieto preci)",
+    "Rindiņas piezīmes",
+    "Rindiņas degvielas blīvums",
+    "Rindiņas degvielas sēra saturs",
+    "Rindiņas degvielas temperatūra"
+  ];
+
+  const docId      = data.documentNumber || "0000";
+  const agentFlipped = flipName(data.agent);
+
   const docDefaults = {
-    "Dokumenta Nr.":                          data.documentNumber || "0000",
-    "Dokumenta Nr. (veidlapas sērija)":       "BAL-V/GEN",
-    "Dokumenta datums":                       todaysDate,
-    "Dokumenta tips (saīsinājums)":           "Rēķins",
-    "Dokumenta veids":                        "Standarta",
-    "Dokumenta valūta":                       "EUR",
-    "Dokumenta valūtas kurss":                "",
-    "Dokumenta uzņēmuma PVN maksātāja valsts":"LV",
-    "Dokumenta uzņēmuma PVN numurs":          "LV40203552764",
-    "Dokumenta partnera nosaukums":           data.reciever || "",
-    "Dokumenta partnera reģ.nr./pers.kods":   data.reg_number_reciever || "",
-    "Dokumenta partnera e-pasts":             "",
-    "Dokumenta partnera PVN maksātāja valsts":"",
-    "Dokumenta partnera PVN numurs":          "",
-    "Dokumenta partnera kontaktpersona":      "",
-    "Dokumenta darbinieka/aģenta nosaukums":  flipName(data.agent),
-    "Dokumenta uzņēmuma noliktavas adrese":   "",
-    "Dokumenta partnera noliktavas adrese":   data.recieving_location || "",
-    "Dokumenta PVN likme (noklusētā)":       "21",
-    "Dokumenta summa":                        sumVatBase.toFixed(2),
-    "Dokumenta PVN summa":                    vatAmount.toFixed(2),
-    "Dokumenta summa apmaksai":               totalCost.toFixed(2),
-    "Dokumenta atlaides %":                   "",
-    "Dokumenta atlaides summa":               sumDisc.toFixed(2),
-    "Dokumenta apmaksas termiņš":             payment_date_due,
-    "Dokumenta apmaksas veids":               "Pārskaitījums",
-    "Dokumenta piegādes datums":              todaysDate,
-    "Dokumenta kontēšanas veidne":            "NĪV",
-    "Dokumenta kopsummu aprēķina veids":      "no cenas ar nodokli",
-    "Dokumenta piezīmes (papildus noteikumi)": `Dokuments ir sagatavots elektroniski un derīgs bez paraksta atbilstoši "Grāmatvedības Likuma" 11.panta nosacījumiem.`,
-    "Rindiņas uzskaites grupa (saīsinājums)": "*",
-    "Rindiņas atlaides %":                    "0",
-    "PVN izvērsums - PVN likme":              "21"
+    "Noliktavas dokumenta ID":                   docId,
+    "Dokumenta Nr.":                             docId,
+    "Dokumenta Nr. (veidlapas sērija)":          "BAL-V/GEN",
+    "Dokumenta datums":                          todaysDate,
+    "Dokumenta tips (saīsinājums)":              "Rēķins",
+    "Dokumenta veids":                           "Standarta",
+    "Dokumenta valūta":                          "EUR",
+    "Dokumenta valūtas kurss":                   "",
+    "Dokumenta uzņēmuma PVN maksātāja valsts":   "LV",
+    "Dokumenta uzņēmuma PVN numurs":             "LV40203552764",
+    "Dokumenta partnera nosaukums":              data.reciever || "",
+    "Dokumenta partnera reģ.nr./pers.kods":      data.reg_number_reciever || "",
+    "Dokumenta partnera e-pasts":                "",
+    "Dokumenta partnera PVN maksātāja valsts":   "",
+    "Dokumenta partnera PVN numurs":             "",
+    "Dokumenta partnera kontaktpersona":         "",
+    "Dokumenta darbinieka/aģenta nosaukums":     agentFlipped || "",
+    "Dokumenta uzņēmuma noliktavas adrese":      "",
+    "Dokumenta partnera noliktavas adrese":      data.recieving_location || "",
+    "Dokumenta PVN likme (noklusētā)":           "21",
+    "Dokumenta summa":                           (Number(sumVatBase) || 0).toFixed(2),
+    "Dokumenta PVN summa":                       (Number(vatAmount)  || 0).toFixed(2),
+    "Dokumenta summa apmaksai":                  (Number(totalCost)  || 0).toFixed(2),
+    "Dokumenta atlaides %":                      "",
+    "Dokumenta atlaides summa":                  (Number(sumDisc)    || 0).toFixed(2),
+    "Dokumenta apmaksas termiņš":                payment_date_due,
+    "Dokumenta apmaksas veids":                  "Pārskaitījums",
+    "Dokumenta piegādes datums":                 todaysDate,
+    "Dokumenta kontēšanas veidne":               "NĪV",
+    "Dokumenta kopsummu aprēķina veids":         "no cenas ar nodokli",
+    "Dokumenta piezīmes (papildus noteikumi)":   `Dokuments ir sagatavots elektroniski un derīgs bez paraksta atbilstoši "Grāmatvedības Likuma" 11.panta nosacījumiem.`,
+    "Rindiņas uzskaites grupa (saīsinājums)":    "*",
+    "Rindiņas atlaides %":                       "0",
+    "PVN izvērsums - PVN likme":                 "21"
   };
 
-  const rows = (data.products || []).map(prod => {
-    const quantity = Number(prod.quantity) || 1;
-    const priceRaw = Number(prod.price) || 0;
-    const vatRate  = prod.hasOwnProperty('vat') ? Number(prod.vat)/100 : 0.21;
-    const includesVat = prod.hasOwnProperty('price_includes_vat')
-      ? Boolean(prod.price_includes_vat)
-      : true;
+  // Build rows for sheet1 (1 row per product, like before)
+  const rows1 = (data.products || []).map(prod => {
+    const quantity    = Number(prod.quantity) || 1;
+    const priceRaw    = Number(prod.price)    || 0;
+    const vatRate     = prod.hasOwnProperty('vat') ? Number(prod.vat)/100 : 0.21;
+    const includesVat = prod.hasOwnProperty('price_includes_vat') ? Boolean(prod.price_includes_vat) : true;
 
     const netUnit   = includesVat ? priceRaw / (1 + vatRate) : priceRaw;
     const grossUnit = includesVat ? priceRaw : netUnit * (1 + vatRate);
@@ -343,48 +377,96 @@ function buildTableFromBody(data, totals) {
       ...docDefaults,
       "Dimensijas kods": "", "Dimensijas nosaukums": "",
       "Papildinformācijas nosaukums":"", "Papildinformācija":"",
-      "Rindiņas preces kods":      prod.description === "Ceļa izmaksas" ? "0004" : "0001",
-      "Rindiņas preces svītrkods": "",
-      "Rindiņas preces papildkods":"",
-      "Rindiņas mērvienība":       prod.unit || "gab",
-      "Rindiņas daudzums":         quantity,
-      "Rindiņas cena":             netUnit.toFixed(2),
-      "Rindiņas cena EUR":         netUnit.toFixed(2),
-      "Rindiņas iepirkšanas cena": "",
-      "Rindiņas uzskaites vērtība EUR": "",//(netUnit * quantity).toFixed(2),
-      "Rindiņas atlaides %":       "0",
+
+      "Rindiņas preces kods":       prod.description === "Ceļa izmaksas" ? "0004" : "0001",
+      "Rindiņas preces svītrkods":  "",
+      "Rindiņas preces papildkods": "",
+      "Rindiņas mērvienība":        prod.unit || "gab",
+      "Rindiņas daudzums":          quantity,
+      "Rindiņas cena":              netUnit.toFixed(2),
+      "Rindiņas cena EUR":          netUnit.toFixed(2),
+      "Rindiņas iepirkšanas cena":  "",
+      "Rindiņas uzskaites vērtība EUR": "",
       "Rindiņas cena ar PVN un atlaidēm": grossUnit.toFixed(2),
-      "Rindiņas PVN likme":         (vatRate*100).toFixed(0),
-      "Rindiņas summa apmaksai":    (grossUnit * quantity).toFixed(2),
+      "Rindiņas PVN likme":          (vatRate*100).toFixed(0),
+      "Rindiņas summa apmaksai":     (grossUnit * quantity).toFixed(2),
+
       "Rindiņas preces izcelsmes valsts kods":"", "Rindiņas preces KN kods":"",
       "Rindiņas akcīzes nodoklis":"", "Rindiņas derīguma termiņš":"",
       "Rindiņas sertifikāts":"", "Rindiņas noliktava (no kuras paņem preci)":"",
       "Rindiņas noliktava (kurā novieto preci)":"",
-      "Rindiņas piezīmes":         prod.product_location || data.recieving_location || "",
+      "Rindiņas piezīmes":          prod.product_location || data.recieving_location || "",
+
       "Sastāvdaļas preces kods":"", "Sastāvdaļas preces svītrkods":"",
       "Sastāvdaļas preces papildkods":"", "Sastāvdaļas uzskaites grupa (saīsinājums)":"",
       "Sastāvdaļas mērvienība":"", "Sastāvdaļas daudzums":"",
       "Sastāvdaļas derīguma termiņš":"", "Sastāvdaļas sertifikāts":"",
       "Sastāvdaļas preces KN kods":"", "Sastāvdaļas noliktava (no kuras paņem preci)":"",
       "Sastāvdaļas piezīmes":"",
+
       "PVN izvērsums - apliekamā summa": (netUnit * quantity).toFixed(2),
-      "PVN izvērsums - PVN":            ((grossUnit - netUnit) * quantity).toFixed(2),
-      "PVN izvērsums - PVN likme":      (vatRate*100).toFixed(0)
+      "PVN izvērsums - PVN":             ((grossUnit - netUnit) * quantity).toFixed(2),
+      "PVN izvērsums - PVN likme":       (vatRate*100).toFixed(0),
     };
 
-    return headers.map(h => rowMap[h] ?? "");
+    return headers1.map(h => rowMap[h] ?? "");
   });
 
-  
-  const baseFilename = (`Rekins__${(data.reciever).trim()}`).toString();
-  console.log('receiver:', data.reciever, '-> baseFilename:', baseFilename);
+ 
+
+ const rows2 = (data.products || []).map(prod => {
+    const quantity    = Number(prod.quantity) || 1;
+    const priceRaw    = Number(prod.price)    || 0;
+    const vatRate     = prod.hasOwnProperty('vat') ? Number(prod.vat)/100 : 0.21;
+    const includesVat = prod.hasOwnProperty('price_includes_vat') ? Boolean(prod.price_includes_vat) : true;
+
+    // price without VAT for “Rindiņas cena”
+    const netUnit   = includesVat ? priceRaw / (1 + vatRate) : priceRaw;
+
+    const code      = prod.description === "Ceļa izmaksas" ? "0004" : "0001";
+    const name      = prod.description || "Prece/Pakalpojums";
+    const unit      = prod.unit || "gab";
+    const notes     = prod.product_location || data.recieving_location || "";
+
+    return [
+      docId,                     // Noliktavas dokumenta ID
+      netUnit.toFixed(2),        // Rindiņas cena (bez PVN, vienības cena)
+      code,                      // Rindiņas preces kods
+      "*",                       // Rindiņas uzskaites grupa (saīsinājums)
+      "",                        // Rindiņas preces svītrkods
+      name,                      // Rindiņas preces nosaukums
+      "",                        // Rindiņas preces papildkods
+      unit,                      // Rindiņas mērvienība
+      quantity,                  // Rindiņas daudzums
+      (netUnit * quantity).toFixed(2), // Rindiņas uzskaites vērtība EUR (bez PVN)
+      "0",                       // Rindiņas atlaides %
+      (vatRate*100).toFixed(0),  // Rindiņas PVN likme
+      "",                        // Rindiņas preces izcelsmes valsts kods
+      "",                        // Rindiņas preces KN kods
+      "",                        // Rindiņas akcīzes nodoklis
+      "",                        // Rindiņas derīguma termiņš
+      "",                        // Rindiņas sertifikāts
+      "",                        // Rindiņas noliktava (no kuras paņem preci)
+      "",                        // Rindiņas noliktava (kurā novieto preci)
+      notes,                     // Rindiņas piezīmes
+      "",                        // Rindiņas degvielas blīvums
+      "",                        // Rindiņas degvielas sēra saturs
+      ""                         // Rindiņas degvielas temperatūra
+    ];
+  });
+
+  // ---------- Filename (ASCII-safe) ----------
+  const baseFilename = `Rekins__${String(data.reciever || 'waybill').trim()}`;
   const asciiFilename = baseFilename
-  .normalize("NFD")                   // split base + diacritic
-  .replace(/[\u0300-\u036f]/g, "")    // remove diacritics
-  .replace(/[^\x20-\x7E]/g, "_");     // replace any non-ASCII with _
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\x20-\x7E]/g, "_");
 
-
-  return { headers, rows, asciiFilename };
+  return {
+    sheet1: { headers: headers1, rows: rows1, name: "Noliktavas dokumenti" },
+    sheet2: { headers: headers2, rows: rows2, name: "Preces" },
+    asciiFilename
+  };
 }
 
 /* ---------- Main API ---------- */
@@ -521,7 +603,13 @@ app.post('/api/waybill', async (req, res) => {
     });
 
     // 1) Excel buffer
-    const xlsxBuffer = buildXlsxBuffer(headers, rows);
+    // const xlsxBuffer = buildXlsxBuffer(headers, rows);
+    // somewhere in your /api/waybill handler, after you computed totals etc.
+    const tables = buildTablesForXlsx(req.body, {
+      sumVatBase, vatAmount, totalCost, sumDisc,
+      todaysDate, payment_date_due
+    });
+    const newXlsxBuffer = saveTwoSheetXlsx(tables, './'); // or your exports dir
 
     // 2) Ensure PDF is a Buffer (Puppeteer may give Uint8Array on some versions)
     const pdfBufferNode = Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer);
@@ -541,7 +629,7 @@ app.post('/api/waybill', async (req, res) => {
 
     // Append both files — MUST be Buffers or Streams
     archive.append(pdfBufferNode, { name: `${baseFilename}.pdf` });
-    archive.append(xlsxBuffer,   { name: `${baseFilename}.xlsx` });
+    archive.append(newXlsxBuffer,   { name: `${baseFilename}.xlsx` });
 
     await archive.finalize();
 
