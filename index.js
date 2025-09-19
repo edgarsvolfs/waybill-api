@@ -201,13 +201,14 @@ function lvDate(d = new Date()) {
 }
 
   // Build an .xlsx buffer from headers + rows
-  function buildXlsxBuffer(headers, rows) {
-    const wb = XLSX.utils.book_new();
-    const aoa = [ headers, ...rows ];
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-    XLSX.utils.book_append_sheet(wb, ws, 'Noliktavas dokumenti');
-    return XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' });
-  }
+function buildXlsxBufferTwoSheets({ sheet1, sheet2 }) {
+  const wb  = XLSX.utils.book_new();
+  const ws1 = XLSX.utils.aoa_to_sheet([ sheet1.headers, ...sheet1.rows ]);
+  const ws2 = XLSX.utils.aoa_to_sheet([ sheet2.headers, ...sheet2.rows ]);
+  XLSX.utils.book_append_sheet(wb, ws1, sheet1.name);
+  XLSX.utils.book_append_sheet(wb, ws2, sheet2.name);
+  return XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' }); // <-- Buffer
+}
 
 // uses SheetJS (XLSX) and path/fs as in your project
 function saveTwoSheetXlsx({ sheet1, sheet2, asciiFilename }, outputDir = "./") {
@@ -267,13 +268,13 @@ const cap = s => (s && s[0] ? s[0].toUpperCase() + s.slice(1) : s || '');
 // Turn request body into AOAs for TWO sheets:
 //  - sheet1: "Noliktavas dokumenti" (full import schema, with "Noliktavas dokumenta ID" first)
 //  - sheet2: "Preces" (per-line simplified overview)
-function buildTableFromBody(data, totals) {
+function buildTablesForXlsx(data, totals) {
   const {
     sumVatBase, vatAmount, totalCost, sumDisc,
     todaysDate, payment_date_due
   } = totals;
 
-  // ---------- SHEET 1: Noliktavas dokumenti ----------
+  // ---------- SHEET 1 ----------
   const headers1 = [
     "Noliktavas dokumenta ID",
     "Dokumenta Nr.","Dokumenta Nr. (veidlapas sērija)","Dokumenta datums","Dokumenta tips (saīsinājums)","Dokumenta veids",
@@ -296,7 +297,7 @@ function buildTableFromBody(data, totals) {
     "PVN izvērsums - apliekamā summa","PVN izvērsums - PVN","PVN izvērsums - PVN likme"
   ];
 
-  // ---------- SHEET 2: Preces (exact columns you requested) ----------
+  // ---------- SHEET 2 ----------
   const headers2 = [
     "Noliktavas dokumenta ID",
     "Rindiņas cena",
@@ -323,7 +324,7 @@ function buildTableFromBody(data, totals) {
     "Rindiņas degvielas temperatūra"
   ];
 
-  const docId      = data.documentNumber || "0000";
+  const docId        = data.documentNumber || "0000";
   const agentFlipped = flipName(data.agent);
 
   const docDefaults = {
@@ -363,7 +364,6 @@ function buildTableFromBody(data, totals) {
     "PVN izvērsums - PVN likme":                 "21"
   };
 
-  // Build rows for sheet1 (1 row per product, like before)
   const rows1 = (data.products || []).map(prod => {
     const quantity    = Number(prod.quantity) || 1;
     const priceRaw    = Number(prod.price)    || 0;
@@ -392,9 +392,8 @@ function buildTableFromBody(data, totals) {
       "Rindiņas summa apmaksai":     (grossUnit * quantity).toFixed(2),
 
       "Rindiņas preces izcelsmes valsts kods":"", "Rindiņas preces KN kods":"",
-      "Rindiņas akcīzes nodoklis":"", "Rindiņas derīguma termiņš":"",
-      "Rindiņas sertifikāts":"", "Rindiņas noliktava (no kuras paņem preci)":"",
-      "Rindiņas noliktava (kurā novieto preci)":"",
+      "Rindiņas akcīzes nodoklis":"", "Rindiņas derīguma termiņš":"", "Rindiņas sertifikāts":"",
+      "Rindiņas noliktava (no kuras paņem preci)":"", "Rindiņas noliktava (kurā novieto preci)":"",
       "Rindiņas piezīmes":          prod.product_location || data.recieving_location || "",
 
       "Sastāvdaļas preces kods":"", "Sastāvdaļas preces svītrkods":"",
@@ -412,55 +411,48 @@ function buildTableFromBody(data, totals) {
     return headers1.map(h => rowMap[h] ?? "");
   });
 
- 
-
- const rows2 = (data.products || []).map(prod => {
+  const rows2 = (data.products || []).map(prod => {
     const quantity    = Number(prod.quantity) || 1;
     const priceRaw    = Number(prod.price)    || 0;
     const vatRate     = prod.hasOwnProperty('vat') ? Number(prod.vat)/100 : 0.21;
     const includesVat = prod.hasOwnProperty('price_includes_vat') ? Boolean(prod.price_includes_vat) : true;
+    const netUnit     = includesVat ? priceRaw / (1 + vatRate) : priceRaw;
 
-    // price without VAT for “Rindiņas cena”
-    const netUnit   = includesVat ? priceRaw / (1 + vatRate) : priceRaw;
-
-    const code      = prod.description === "Ceļa izmaksas" ? "0004" : "0001";
-    const name      = prod.description || "Prece/Pakalpojums";
-    const unit      = prod.unit || "gab";
-    const notes     = prod.product_location || data.recieving_location || "";
+    const code  = prod.description === "Ceļa izmaksas" ? "0004" : "0001";
+    const name  = prod.description || "Prece/Pakalpojums";
+    const unit  = prod.unit || "gab";
+    const notes = prod.product_location || data.recieving_location || "";
 
     return [
-      docId,                     // Noliktavas dokumenta ID
-      netUnit.toFixed(2),        // Rindiņas cena (bez PVN, vienības cena)
-      code,                      // Rindiņas preces kods
-      "*",                       // Rindiņas uzskaites grupa (saīsinājums)
-      "",                        // Rindiņas preces svītrkods
-      name,                      // Rindiņas preces nosaukums
-      "",                        // Rindiņas preces papildkods
-      unit,                      // Rindiņas mērvienība
-      quantity,                  // Rindiņas daudzums
-      (netUnit * quantity).toFixed(2), // Rindiņas uzskaites vērtība EUR (bez PVN)
-      "0",                       // Rindiņas atlaides %
-      (vatRate*100).toFixed(0),  // Rindiņas PVN likme
-      "",                        // Rindiņas preces izcelsmes valsts kods
-      "",                        // Rindiņas preces KN kods
-      "",                        // Rindiņas akcīzes nodoklis
-      "",                        // Rindiņas derīguma termiņš
-      "",                        // Rindiņas sertifikāts
-      "",                        // Rindiņas noliktava (no kuras paņem preci)
-      "",                        // Rindiņas noliktava (kurā novieto preci)
-      notes,                     // Rindiņas piezīmes
-      "",                        // Rindiņas degvielas blīvums
-      "",                        // Rindiņas degvielas sēra saturs
-      ""                         // Rindiņas degvielas temperatūra
+      docId,
+      netUnit.toFixed(2),
+      code,
+      "*",
+      "",
+      name,
+      "",
+      unit,
+      quantity,
+      (netUnit * quantity).toFixed(2),
+      "0",
+      (vatRate*100).toFixed(0),
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      notes,
+      "",
+      "",
+      ""
     ];
   });
 
-  // ---------- Filename (ASCII-safe) ----------
-  const baseFilename = `Rekins__${String(data.reciever || 'waybill').trim()}`;
+  const baseFilename  = `Rekins__${String(data.reciever || 'waybill').trim()}`;
   const asciiFilename = baseFilename
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^\x20-\x7E]/g, "_");
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7E]/g, "_");
 
   return {
     sheet1: { headers: headers1, rows: rows1, name: "Noliktavas dokumenti" },
@@ -605,14 +597,23 @@ app.post('/api/waybill', async (req, res) => {
     // 1) Excel buffer
     // const xlsxBuffer = buildXlsxBuffer(headers, rows);
     // somewhere in your /api/waybill handler, after you computed totals etc.
-    const tables = buildTablesForXlsx(req.body, {
-      sumVatBase, vatAmount, totalCost, sumDisc,
-      todaysDate, payment_date_due
+    const tables = buildTablesForXlsx(data, {
+      sumVatBase, vatAmount, totalCost, sumDisc, todaysDate, payment_date_due
     });
-    const newXlsxBuffer = saveTwoSheetXlsx(tables, './'); // or your exports dir
 
-    // 2) Ensure PDF is a Buffer (Puppeteer may give Uint8Array on some versions)
+    // 1) Build XLSX buffer for the ZIP
+    const xlsxBuffer = buildXlsxBufferTwoSheets(tables);
+
+    // 2) Ensure PDF is a Buffer
     const pdfBufferNode = Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer);
+
+    // 3) Stream ZIP (PDF + XLSX)
+    const zipBase = tables.asciiFilename; // safe filename
+    res.set({
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="${zipBase}.zip"`
+    });
+
 
     // Stream a ZIP (PDF + XLSX)
     res.set({
@@ -627,11 +628,11 @@ app.post('/api/waybill', async (req, res) => {
     });
     archive.pipe(res);
 
-    // Append both files — MUST be Buffers or Streams
-    archive.append(pdfBufferNode, { name: `${baseFilename}.pdf` });
-    archive.append(newXlsxBuffer,   { name: `${baseFilename}.xlsx` });
+    archive.append(pdfBufferNode, { name: `${zipBase}.pdf` });
+    archive.append(xlsxBuffer,   { name: `${zipBase}.xlsx` });
 
     await archive.finalize();
+
 
   } catch (err) {
     console.error('Generation error:', err);
