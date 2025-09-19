@@ -601,6 +601,9 @@ app.post('/api/waybill', async (req, res) => {
       sumVatBase, vatAmount, totalCost, sumDisc, todaysDate, payment_date_due
     });
 
+
+    
+    //// ZIP (PDF + XLSX)
     // 1) Build XLSX buffer for the ZIP
     const xlsxBuffer = buildXlsxBufferTwoSheets(tables);
 
@@ -608,17 +611,12 @@ app.post('/api/waybill', async (req, res) => {
     const pdfBufferNode = Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer);
 
     // 3) Stream ZIP (PDF + XLSX)
-    const zipBase = tables.asciiFilename; // safe filename
+    // use the safe ASCII filename returned by buildTablesForXlsx
+    const zipBase = tables.asciiFilename || 'waybill';
+
     res.set({
       'Content-Type': 'application/zip',
       'Content-Disposition': `attachment; filename="${zipBase}.zip"`
-    });
-
-
-    // Stream a ZIP (PDF + XLSX)
-    res.set({
-      'Content-Type': 'application/zip',
-      'Content-Disposition': `attachment; filename="${asciiFilename}.zip"`
     });
 
     const archive = archiver('zip', { zlib: { level: 9 } });
@@ -628,10 +626,14 @@ app.post('/api/waybill', async (req, res) => {
     });
     archive.pipe(res);
 
+    // Append files (Buffers/Streams only)
     archive.append(pdfBufferNode, { name: `${zipBase}.pdf` });
-    archive.append(xlsxBuffer,   { name: `${zipBase}.xlsx` });
+    archive.append(xlsxBuffer,    { name: `${zipBase}.xlsx` });
 
     await archive.finalize();
+    //// ZIP (PDF + XLSX)
+
+
 
 
   } catch (err) {
