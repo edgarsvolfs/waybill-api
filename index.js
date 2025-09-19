@@ -618,7 +618,7 @@ app.post('/api/waybill', async (req, res) => {
     // Stream a ZIP (PDF + XLSX)
     res.set({
       'Content-Type': 'application/zip',
-      'Content-Disposition': `attachment; filename="${baseFilename}.zip"`
+      'Content-Disposition': `attachment; filename="${asciiFilename}.zip"`
     });
 
     const archive = archiver('zip', { zlib: { level: 9 } });
