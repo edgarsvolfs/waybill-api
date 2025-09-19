@@ -590,9 +590,9 @@ app.post('/api/waybill', async (req, res) => {
     await browser.close();
 
    // Build table and files
-    const { headers, rows, baseFilename } = buildTableFromBody(data, {
-      sumVatBase, vatAmount, totalCost, sumDisc, todaysDate, payment_date_due
-    });
+    // const { headers, rows, baseFilename } = buildTableFromBody(data, {
+    //   sumVatBase, vatAmount, totalCost, sumDisc, todaysDate, payment_date_due
+    // });
 
     // 1) Excel buffer
     // const xlsxBuffer = buildXlsxBuffer(headers, rows);
