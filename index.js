@@ -385,7 +385,7 @@ function buildTablesForXlsx(data, totals) {
     const includesVat = prod.hasOwnProperty('price_includes_vat') ? Boolean(prod.price_includes_vat) : true;
     const netUnit     = includesVat ? priceRaw / (1 + vatRate) : priceRaw;
 
-    const code  = prod.description === "Ceļa izdevumi" ? "0004" : "0001";
+    const code  = prod.description === "Ceļa izdevumi" ? "'0004" : "'0001";
     const name  = prod.description || "Prece/Pakalpojums";
     const unit  = prod.unit || "gab";
     const notes = prod.product_location || data.recieving_location || "";
