@@ -315,7 +315,7 @@ function buildTablesForXlsx(data, totals) {
     "Dokumenta uzņēmuma PVN numurs":           "LV40203552764",
     "Dokumenta partnera nosaukums":            data.reciever || "",
     "Dokumenta partnera reģ.nr./pers.kods":    data.reg_number_reciever || "",
-    "Dokumenta partnera e-pasts":              "",
+    "Dokumenta partnera e-pasts":              data.reciever_email || "",
     "Dokumenta partnera PVN maksātāja valsts": "",
     "Dokumenta partnera PVN numurs":           "",
     "Dokumenta partnera kontaktpersona":       "",
@@ -332,7 +332,7 @@ function buildTablesForXlsx(data, totals) {
     "Dokumenta apmaksas veids":                "Pārskaitījums",
     "Dokumenta piegādes datums":               todaysDate,
     "Dokumenta kontēšanas veidne":             "NĪV",
-    "Dokumenta kopsummu aprēķina veids":       "no cenas ar nodokli",
+    "Dokumenta kopsummu aprēķina veids": (data.products?.some(p => p.price_includes_vat === false) ? "no cenas" : "no cenas ar nodokli"),
     "Dokumenta piezīmes (papildus noteikumi)": `Dokuments ir sagatavots elektroniski un derīgs bez paraksta atbilstoši "Grāmatvedības Likuma" 11.panta nosacījumiem.`,
     // Everything below is line-level — keep empty on Sheet 1:
     "Dimensijas kods":"", "Dimensijas nosaukums":"", "Papildinformācijas nosaukums":"", "Papildinformācija":"",
@@ -399,7 +399,7 @@ function buildTablesForXlsx(data, totals) {
       "",                              // Rindiņas preces papildkods
       unit,                            // Rindiņas mērvienība
       quantity,                        // Rindiņas daudzums
-      (netUnit * quantity).toFixed(2), // Rindiņas uzskaites vērtība EUR (bez PVN)
+      "",                              // (netUnit * quantity).toFixed(2), // Rindiņas uzskaites vērtība EUR (bez PVN)
       "0",                             // Rindiņas atlaides %
       (vatRate*100).toFixed(0),        // Rindiņas PVN likme
       "", "", "", "", "", "", "",      // origin/KN/akcīze/derīg./sert./noliktavas…
