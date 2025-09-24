@@ -336,7 +336,8 @@ function buildTablesForXlsx(data, totals) {
     "Dokumenta piezīmes (papildus noteikumi)": `Dokuments ir sagatavots elektroniski un derīgs bez paraksta atbilstoši "Grāmatvedības Likuma" 11.panta nosacījumiem.`,
     // Everything below is line-level — keep empty on Sheet 1:
     "Dimensijas kods":"", "Dimensijas nosaukums":"", "Papildinformācijas nosaukums":"", "Papildinformācija":"",
-    "Rindiņas preces kods":"", "Rindiņas preces svītrkods":"", "Rindiņas preces papildkods":"", "Rindiņas uzskaites grupa (saīsinājums)":"",
+    "Rindiņas preces kods":                     "0001"
+    , "Rindiņas preces svītrkods":"", "Rindiņas preces papildkods":"", "Rindiņas uzskaites grupa (saīsinājums)":"",
     "Rindiņas mērvienība":"", "Rindiņas daudzums":"", "Rindiņas cena":"", "Rindiņas cena EUR":"", "Rindiņas iepirkšanas cena":"",
     "Rindiņas uzskaites vērtība EUR":"", "Rindiņas atlaides %":"", "Rindiņas cena ar PVN un atlaidēm":"", "Rindiņas PVN likme":"", "Rindiņas summa apmaksai":"",
     "Rindiņas preces izcelsmes valsts kods":"", "Rindiņas preces KN kods":"", "Rindiņas akcīzes nodoklis":"", "Rindiņas derīguma termiņš":"", "Rindiņas sertifikāts":"",
@@ -384,7 +385,7 @@ function buildTablesForXlsx(data, totals) {
     const includesVat = prod.hasOwnProperty('price_includes_vat') ? Boolean(prod.price_includes_vat) : true;
     const netUnit     = includesVat ? priceRaw / (1 + vatRate) : priceRaw;
 
-    const code  = prod.description === "Ceļa izmaksas" ? "0004" : "0001";
+    const code  = prod.description === "Ceļa izdevumi" ? "0004" : "0001";
     const name  = prod.description || "Prece/Pakalpojums";
     const unit  = prod.unit || "gab";
     const notes = prod.product_location || data.recieving_location || "";
