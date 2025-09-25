@@ -123,20 +123,20 @@ function workbookToBuffer(wb, XLSX) {
 /* ---------- helper: send email with merged file ---------- */
 async function sendMergedEmail(filePath, fileName) {
   const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: 587,
-    secure: false,
+    host: process.env.SMTP_HOST || "smtp.gmail.com",
+    port: Number(process.env.SMTP_PORT) || 465,
+    secure: (process.env.SMTP_PORT || "465") === "465", // true if using port 465
     auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS
+      user: process.env.SMTP_USER, // your Gmail address
+      pass: process.env.SMTP_PASS  // your 16-digit app password
     }
   });
 
   const info = await transporter.sendMail({
-    from: process.env.MAIL_FROM || '"Waybill API" <noreply@balanss-v.lv>',
-    to: process.env.MAIL_TO || 'edgars.volfs@gmail.com',
-    subject: 'Importa fails',
-    text: 'Importa fails pielikumā.',
+    from: process.env.MAIL_FROM || `"Waybill API" <${process.env.SMTP_USER}>`,
+    to: process.env.MAIL_TO || "edgars.volfs@gmail.com",
+    subject: "Importa fails",
+    text: "Importa fails pielikumā.",
     attachments: [
       {
         filename: fileName,
@@ -145,9 +145,8 @@ async function sendMergedEmail(filePath, fileName) {
     ]
   });
 
-  console.log('📧 Sent merged XLSX email:', info.messageId);
+  console.log("📧 Sent merged XLSX email:", info.messageId);
 }
-
 /* ---------- Helpers ---------- */
 // --- define constants first ---
 // --- constants ---
