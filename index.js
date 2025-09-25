@@ -28,6 +28,9 @@ const BUFFER_DIR = '/data/incoming-xlsx';
 const MERGED_DIR = '/data/merged-xlsx';
 let mergeTimer = null;
 let pendingFiles = [];
+const COUNTER_DIR  = process.env.COUNTER_DIR || '/data';
+const COUNTER_FILE = path.join(COUNTER_DIR, 'waybill_counter.json');
+
 
 /* ensure dirs exist */
 fs.mkdirSync(BUFFER_DIR, { recursive: true });
