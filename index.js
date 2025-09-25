@@ -14,12 +14,25 @@ const upload = multer({
   limits: { fileSize: 25 * 1024 * 1024 } // per file; adjust if needed
 });
 const app = express();
+const nodemailer = require('nodemailer');
 
 
 /* ---------- Static assets ---------- */
 const css = fs.readFileSync(path.join(__dirname, 'public', 'styles.css'), 'utf8');
 const logoData = fs.readFileSync(path.join(__dirname, 'public/images/logo4.png')).toString('base64');
 const logoMime = 'image/png';
+
+// xlsx merge dirs & state
+const BUFFER_DIR = '/data/incoming-xlsx';
+const MERGED_DIR = '/data/merged-xlsx';
+let mergeTimer = null;
+let pendingFiles = [];
+
+/* ensure dirs exist */
+fs.mkdirSync(BUFFER_DIR, { recursive: true });
+fs.mkdirSync(MERGED_DIR, { recursive: true });
+
+
 
 /* ---------- Express config ---------- */
 app.use(bodyParser.json());
@@ -106,6 +119,34 @@ function workbookToBuffer(wb, XLSX) {
   return Buffer.isBuffer(out) ? out : Buffer.from(out);
 }
 /* ---------- END xlsx merge Helpers ---------- */
+
+/* ---------- helper: send email with merged file ---------- */
+async function sendMergedEmail(filePath, fileName) {
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: 587,
+    secure: false,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS
+    }
+  });
+
+  const info = await transporter.sendMail({
+    from: process.env.MAIL_FROM || '"Waybill API" <noreply@yourdomain.lv>',
+    to: process.env.MAIL_TO || 'you@yourdomain.lv',
+    subject: 'Merged XLSX file ready',
+    text: 'The merged XLSX file is attached.',
+    attachments: [
+      {
+        filename: fileName,
+        path: filePath
+      }
+    ]
+  });
+
+  console.log('📧 Sent merged XLSX email:', info.messageId);
+}
 
 /* ---------- Helpers ---------- */
 // --- define constants first ---
@@ -690,7 +731,7 @@ app.post('/api/waybill', async (req, res) => {
 /* ---------- merge API ---------- */
 app.post('/api/merge-xlsx', upload.any(), async (req, res) => {
   try {
-    // 1) Collect ALL .xlsx files, any field name (Make.com can send variable count)
+    // 1) Collect all .xlsx files
     const xlsxFiles = (req.files || []).filter(f =>
       f.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
       /\.xlsx$/i.test(f.originalname || '')
@@ -700,32 +741,61 @@ app.post('/api/merge-xlsx', upload.any(), async (req, res) => {
       return res.status(400).json({ error: 'No .xlsx files uploaded.' });
     }
 
-    // 2) Optional safe base filename
-    const baseName = (req.body.filename || 'merged').toString().trim() || 'merged';
-    const asciiName = baseName
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^\x20-\x7E]/g, '_');
+    // 2) Save to buffer dir
+    for (const f of xlsxFiles) {
+      const safeName = Date.now() + '_' + f.originalname.replace(/[^\w.-]/g, '_');
+      const fullPath = path.join(BUFFER_DIR, safeName);
+      fs.writeFileSync(fullPath, f.buffer);
+      pendingFiles.push(fullPath);
+    }
 
-    // 3) Merge ALL buffers into 2 sheets
-    const buffers = xlsxFiles.map(f => f.buffer);
-    const mergedWb = buildMergedWorkbook(buffers, XLSX, {
-      sheetNames: ["Noliktavas dokumenti", "Preces"]
-    });
-    const outBuf = workbookToBuffer(mergedWb, XLSX);
+    console.log(`📥 Queued ${xlsxFiles.length} XLSX file(s). Total pending: ${pendingFiles.length}`);
 
-    // 4) Respond with one merged workbook
-    res.set({
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="${asciiName}.xlsx"`
-    });
-    res.send(outBuf);
+    // 3) Start merge timer if not already running
+    if (!mergeTimer) {
+      console.log('⏱️ Starting 60s merge timer…');
+      mergeTimer = setTimeout(async () => {
+        try {
+          if (pendingFiles.length === 0) {
+            console.log('ℹ️ No files pending, skipping merge.');
+            return;
+          }
+
+          // Merge all pending files
+          const buffers = pendingFiles.map(f => fs.readFileSync(f));
+          const mergedWb = buildMergedWorkbook(buffers, XLSX, {
+            sheetNames: ["Noliktavas dokumenti", "Preces"]
+          });
+          const outBuf = workbookToBuffer(mergedWb, XLSX);
+
+          const mergedName = `merged_${Date.now()}.xlsx`;
+          const mergedPath = path.join(MERGED_DIR, mergedName);
+          fs.writeFileSync(mergedPath, outBuf);
+
+          console.log(`✅ Merged ${pendingFiles.length} files -> ${mergedPath}`);
+
+          // Clear pending list
+          pendingFiles.forEach(f => fs.unlinkSync(f));
+          pendingFiles = [];
+
+          // Send email with merged file
+          await sendMergedEmail(mergedPath, mergedName);
+
+        } catch (err) {
+          console.error('❌ Merge timer failed:', err);
+        } finally {
+          mergeTimer = null;
+        }
+      }, 60_000); // 1 minute
+    }
+
+    res.json({ status: 'queued', queued: pendingFiles.length });
+
   } catch (err) {
     console.error('merge-xlsx error:', err);
-    res.status(500).json({ error: 'Failed to merge XLSX files.' });
+    res.status(500).json({ error: 'Failed to queue XLSX files.' });
   }
 });
-
-
 
 
 
