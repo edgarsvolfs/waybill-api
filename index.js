@@ -16,6 +16,7 @@ const upload = multer({
 const app = express();
 const FormData = require('form-data');
 const fetch = (...args) => import('node-fetch').then(({default: f}) => f(...args));
+const Mailgun = require('mailgun.js');
 
 /* ---------- Static assets ---------- */
 const css = fs.readFileSync(path.join(__dirname, 'public', 'styles.css'), 'utf8');
@@ -120,61 +121,39 @@ function workbookToBuffer(wb, XLSX) {
 }
 /* ---------- END xlsx merge Helpers ---------- */
 
-/* ---------- helper: send email with merged file ---------- */
+// init client once (reuse)
+const mg = new Mailgun(formData).client({
+  username: 'api',
+  key: process.env.MAILGUN_API_KEY, // PRIVATE key (starts with "key-...")
+  url: (process.env.MAILGUN_REGION || '').toUpperCase() === 'EU'
+    ? 'https://api.eu.mailgun.net'
+    : 'https://api.mailgun.net'
+});
+
+// Send the merged XLSX
 async function sendMergedEmail(filePath, fileName) {
-  const domain = process.env.MAILGUN_DOMAIN;
-  const key    = process.env.MAILGUN_KEY;
-  const from   = process.env.MAIL_FROM || 'Waybill API <noreply@example.com>';
-  const to     = process.env.MAIL_TO;
+  const domain = process.env.MAILGUN_DOMAIN;                 // e.g. mg.yourdomain.lv or sandbox....mailgun.org
+  const from   = process.env.MAIL_FROM || `Waybill API <postmaster@${domain}>`;
+  const to     = process.env.MAIL_TO   || 'you@example.com';
 
-  if (!domain || !key || !to) {
-    console.warn('Mailgun env missing; skipping email.');
-    return;
+  if (!process.env.MAILGUN_API_KEY || !domain) {
+    throw new Error('MAILGUN_API_KEY or MAILGUN_DOMAIN is missing');
   }
 
-  const form = new FormData();
-  form.append('from', from);
-  form.append('to', to);
-  form.append('subject', 'Importa fails');
-  form.append('text', 'Importa fails ir pievienots pielikumā.');
-  form.append('attachment', fs.createReadStream(filePath), { filename: fileName });
+  const attachmentStream = fs.createReadStream(filePath);
 
-  const resp = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
-    method: 'POST',
-    headers: { Authorization: 'Basic ' + Buffer.from(`api:${key}`).toString('base64') },
-    body: form
-  });
+  const data = {
+    from,
+    to,
+    subject: 'Apvienotais imports (XLSX)',
+    text: 'Apvienotais imports pielikumā.',
+    // mailgun.js accepts attachments as array of { filename, data }
+    attachment: [{ filename: fileName, data: attachmentStream }]
+  };
 
-  if (!resp.ok) {
-    const txt = await resp.text();
-    throw new Error(`Mailgun send failed: ${resp.status} ${txt}`);
-  }
-  console.log('📧 Sent merged XLSX via Mailgun:', fileName);
+  const resp = await mg.messages.create(domain, data);
+  console.log('📧 Mailgun sent:', resp.id || resp.message);
 }
-/* ---------- Helpers ---------- */
-// --- define constants first ---
-// --- constants ---
-//
-const COUNTER_DIR  = process.env.COUNTER_DIR || '/data';
-const COUNTER_FILE = path.join(COUNTER_DIR, 'waybill_counter.json');
-
-// legacy dir-lock (from old code) and new file-lock
-const LEGACY_LOCK_PATH = path.join(COUNTER_DIR, 'waybill_counter.lock');     // old DIR
-const LOCK_FILE        = path.join(COUNTER_DIR, 'waybill_counter.lockfile'); // new FILE
-
-// optional: only while debugging
-if (process.env.ENABLE_VOLUME_PROBE === '1') {
-  (async (dir) => {
-    try {
-      await fsp.mkdir(dir, { recursive: true });
-      await fsp.writeFile(path.join(dir, '.rw-test'), `ok ${Date.now()}`, 'utf8');
-      console.log('✅ Volume write OK at', dir);
-    } catch (e) {
-      console.error('❌ Volume write FAILED at', dir, e);
-    }
-  })(COUNTER_DIR);
-}
-
 // --- startup init & cleanup (wrap in IIFE: no top-level await) ---
 (async () => {
   try {
