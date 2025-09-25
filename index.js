@@ -31,7 +31,7 @@ let pendingFiles = [];
 const COUNTER_DIR  = process.env.COUNTER_DIR || '/data';
 const COUNTER_FILE = path.join(COUNTER_DIR, 'waybill_counter.json');
 const LOCK_FILE    = path.join(COUNTER_DIR, 'waybill_counter.lock');
-
+const LEGACY_LOCK_PATH = path.join(COUNTER_DIR, 'waybill_counter.lock');     // this is the OLD *directory*
 
 
 /* ensure dirs exist */
