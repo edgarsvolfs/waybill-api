@@ -121,31 +121,69 @@ function workbookToBuffer(wb, XLSX) {
 /* ---------- END xlsx merge Helpers ---------- */
 
 /* ---------- helper: send email with merged file ---------- */
-async function sendMergedEmail(filePath, fileName) {
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || "smtp.gmail.com",
-    port: Number(process.env.SMTP_PORT) || 465,
-    secure: (process.env.SMTP_PORT || "465") === "465", // true if using port 465
+function createTransporterFromEnv() {
+  const host   = process.env.SMTP_HOST;
+  const port   = Number(process.env.SMTP_PORT || 465);
+  const secure = port === 465; // 465 = TLS, 587 = STARTTLS
+
+  return nodemailer.createTransport({
+    host,
+    port,
+    secure,
     auth: {
-      user: process.env.SMTP_USER, // your Gmail address
-      pass: process.env.SMTP_PASS  // your 16-digit app password
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS
+    },
+    // Force IPv4; avoids IPv6 (::) timeouts on some hosts
+    family: 4,
+    // Timeouts (ms)
+    connectionTimeout: 15000,
+    greetingTimeout:   10000,
+    socketTimeout:     20000,
+    // For STARTTLS (587), require TLS upgrade
+    requireTLS: !secure,
+    // Keep strict TLS by default
+    tls: { rejectUnauthorized: true }
+  });
+}
+
+// small helper
+const wait = ms => new Promise(r => setTimeout(r, ms));
+
+async function sendMergedEmail(filePath, fileName) {
+  const transporter = createTransporterFromEnv();
+
+  const fromAddr = process.env.MAIL_FROM || `"Waybill API" <${process.env.SMTP_USER}>`;
+  const toAddr   = process.env.MAIL_TO;
+
+  if (!toAddr) {
+    console.warn('MAIL_TO is not set; skipping email send.');
+    return;
+  }
+
+  const mail = {
+    from: fromAddr,
+    to:   toAddr,
+    subject: 'Importa fails',
+    text:    'Importa fails ir pievienots pielikumā.',
+    attachments: [{ filename: fileName, path: filePath }]
+  };
+
+  // Retry up to 3 times with backoff
+  let lastErr;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const info = await transporter.sendMail(mail);
+      console.log(`📧 Email sent (attempt ${attempt}):`, info.messageId);
+      return;
+    } catch (err) {
+      lastErr = err;
+      console.warn(`✉️  Email attempt ${attempt} failed:`, err.code || err.message);
+      if (attempt < 3) await wait(3000 * attempt); // 3s, then 6s
     }
-  });
+  }
 
-  const info = await transporter.sendMail({
-    from: process.env.MAIL_FROM || `"Waybill API" <${process.env.SMTP_USER}>`,
-    to: process.env.MAIL_TO || "edgars.volfs@gmail.com",
-    subject: "Importa fails",
-    text: "Importa fails pielikumā.",
-    attachments: [
-      {
-        filename: fileName,
-        path: filePath
-      }
-    ]
-  });
-
-  console.log("📧 Sent merged XLSX email:", info.messageId);
+  console.error('❌ Email failed after retries. File kept on disk at:', filePath, lastErr);
 }
 /* ---------- Helpers ---------- */
 // --- define constants first ---
