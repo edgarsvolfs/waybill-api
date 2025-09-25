@@ -14,9 +14,9 @@ const upload = multer({
   limits: { fileSize: 25 * 1024 * 1024 } // per file; adjust if needed
 });
 const app = express();
-const FormData = require('form-data');
 const fetch = (...args) => import('node-fetch').then(({default: f}) => f(...args));
 const Mailgun = require('mailgun.js');
+const formData = require('form-data');
 
 /* ---------- Static assets ---------- */
 const css = fs.readFileSync(path.join(__dirname, 'public', 'styles.css'), 'utf8');
