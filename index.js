@@ -8,8 +8,13 @@ const fs         = require('fs');
 const archiver   = require('archiver');
 const XLSX = require('xlsx');
 const fsp = fs.promises;
-
+const multer = require('multer');
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 } // per file; adjust if needed
+});
 const app = express();
+
 
 /* ---------- Static assets ---------- */
 const css = fs.readFileSync(path.join(__dirname, 'public', 'styles.css'), 'utf8');
@@ -21,6 +26,86 @@ app.use(bodyParser.json());
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.use('/public', express.static(path.join(__dirname, 'public')));
+
+
+/* ---------- xlsx merge Helpers ---------- */
+function normalizeHeaderCell(s) {
+  return String(s ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function aoaFromSheet(ws, XLSX) {
+  // SheetJS utils: turn worksheet -> array of arrays
+  return XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false });
+}
+
+function appendRows(master, incoming) {
+  // assumes both are AOA (array of arrays)
+  // keep master[0] as headers, skip incoming[0] if equals (or normalized equals)
+  if (!incoming || incoming.length === 0) return;
+
+  const mHdr = (master[0] || []).map(normalizeHeaderCell);
+  const iHdr = (incoming[0] || []).map(normalizeHeaderCell);
+
+  const headersMatch =
+    mHdr.length === iHdr.length &&
+    mHdr.every((h, idx) => h === iHdr[idx]);
+
+  // start rows index after header (0) if headers match, else include all
+  const start = headersMatch ? 1 : 0;
+  for (let r = start; r < incoming.length; r++) {
+    // pad/truncate to header length so columns line up
+    const row = Array.from({ length: mHdr.length }, (_, c) => incoming[r][c] ?? '');
+    master.push(row);
+  }
+}
+
+function buildMergedWorkbook(buffers, XLSX, opts = {}) {
+  const sheetNames = opts.sheetNames || ["Noliktavas dokumenti", "Preces"];
+
+  // master AOAs, one per expected sheet
+  const masters = sheetNames.map(() => []);
+  let headerLocked = sheetNames.map(() => false);
+
+  for (const buf of buffers) {
+    const wb = XLSX.read(buf, { type: 'buffer' });
+
+    sheetNames.forEach((sheetName, idx) => {
+      const ws = wb.Sheets[sheetName];
+      if (!ws) return; // sheet not present in this file → skip
+
+      const aoa = aoaFromSheet(ws, XLSX);
+      if (aoa.length === 0) return;
+
+      if (!headerLocked[idx]) {
+        // initialize master with this file's header row
+        masters[idx].push(aoa[0].map(v => normalizeHeaderCell(v)));
+        headerLocked[idx] = true;
+      }
+      appendRows(masters[idx], aoa);
+    });
+  }
+
+  // Build a new workbook with both sheets
+  const outWb = XLSX.utils.book_new();
+  masters.forEach((aoa, idx) => {
+    // if a sheet never appeared in any file, keep it with just a header?
+    // Here we’ll only create it if we actually have a header
+    if (aoa.length > 0) {
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      XLSX.utils.book_append_sheet(outWb, ws, sheetNames[idx]);
+    }
+  });
+  return outWb;
+}
+
+function workbookToBuffer(wb, XLSX) {
+  // produce a Node Buffer for response
+  const out = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  return Buffer.isBuffer(out) ? out : Buffer.from(out);
+}
+/* ---------- END xlsx merge Helpers ---------- */
 
 /* ---------- Helpers ---------- */
 // --- define constants first ---
@@ -601,6 +686,48 @@ app.post('/api/waybill', async (req, res) => {
     if (!res.headersSent) res.status(500).json({ error: 'Failed to generate bundle.' });
   }
 });
+
+/* ---------- merge API ---------- */
+app.post('/api/merge-xlsx', upload.any(), async (req, res) => {
+  try {
+    // 1) Collect ALL .xlsx files, any field name (Make.com can send variable count)
+    const xlsxFiles = (req.files || []).filter(f =>
+      f.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+      /\.xlsx$/i.test(f.originalname || '')
+    );
+
+    if (xlsxFiles.length === 0) {
+      return res.status(400).json({ error: 'No .xlsx files uploaded.' });
+    }
+
+    // 2) Optional safe base filename
+    const baseName = (req.body.filename || 'merged').toString().trim() || 'merged';
+    const asciiName = baseName
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^\x20-\x7E]/g, '_');
+
+    // 3) Merge ALL buffers into 2 sheets
+    const buffers = xlsxFiles.map(f => f.buffer);
+    const mergedWb = buildMergedWorkbook(buffers, XLSX, {
+      sheetNames: ["Noliktavas dokumenti", "Preces"]
+    });
+    const outBuf = workbookToBuffer(mergedWb, XLSX);
+
+    // 4) Respond with one merged workbook
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${asciiName}.xlsx"`
+    });
+    res.send(outBuf);
+  } catch (err) {
+    console.error('merge-xlsx error:', err);
+    res.status(500).json({ error: 'Failed to merge XLSX files.' });
+  }
+});
+
+
+
+
 
 /* ---------- Start server ---------- */
 const PORT = process.env.PORT || 3000;
