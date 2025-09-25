@@ -30,6 +30,8 @@ let mergeTimer = null;
 let pendingFiles = [];
 const COUNTER_DIR  = process.env.COUNTER_DIR || '/data';
 const COUNTER_FILE = path.join(COUNTER_DIR, 'waybill_counter.json');
+const LOCK_FILE    = path.join(COUNTER_DIR, 'waybill_counter.lock');
+
 
 
 /* ensure dirs exist */
