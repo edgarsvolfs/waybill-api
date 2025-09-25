@@ -133,10 +133,10 @@ async function sendMergedEmail(filePath, fileName) {
   });
 
   const info = await transporter.sendMail({
-    from: process.env.MAIL_FROM || '"Waybill API" <noreply@yourdomain.lv>',
-    to: process.env.MAIL_TO || 'you@yourdomain.lv',
-    subject: 'Merged XLSX file ready',
-    text: 'The merged XLSX file is attached.',
+    from: process.env.MAIL_FROM || '"Waybill API" <noreply@balanss-v.lv>',
+    to: process.env.MAIL_TO || 'edgars.volfs@gmail.com',
+    subject: 'Importa fails',
+    text: 'Importa fails pielikumā.',
     attachments: [
       {
         filename: fileName,
