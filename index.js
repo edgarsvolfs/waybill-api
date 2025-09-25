@@ -14,8 +14,8 @@ const upload = multer({
   limits: { fileSize: 25 * 1024 * 1024 } // per file; adjust if needed
 });
 const app = express();
-const nodemailer = require('nodemailer');
-
+const FormData = require('form-data');
+const fetch = (...args) => import('node-fetch').then(({default: f}) => f(...args));
 
 /* ---------- Static assets ---------- */
 const css = fs.readFileSync(path.join(__dirname, 'public', 'styles.css'), 'utf8');
@@ -121,69 +121,35 @@ function workbookToBuffer(wb, XLSX) {
 /* ---------- END xlsx merge Helpers ---------- */
 
 /* ---------- helper: send email with merged file ---------- */
-function createTransporterFromEnv() {
-  const host   = process.env.SMTP_HOST;
-  const port   = Number(process.env.SMTP_PORT || 465);
-  const secure = port === 465; // 465 = TLS, 587 = STARTTLS
-
-  return nodemailer.createTransport({
-    host,
-    port,
-    secure,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS
-    },
-    // Force IPv4; avoids IPv6 (::) timeouts on some hosts
-    family: 4,
-    // Timeouts (ms)
-    connectionTimeout: 15000,
-    greetingTimeout:   10000,
-    socketTimeout:     20000,
-    // For STARTTLS (587), require TLS upgrade
-    requireTLS: !secure,
-    // Keep strict TLS by default
-    tls: { rejectUnauthorized: true }
-  });
-}
-
-// small helper
-const wait = ms => new Promise(r => setTimeout(r, ms));
-
 async function sendMergedEmail(filePath, fileName) {
-  const transporter = createTransporterFromEnv();
+  const domain = process.env.MAILGUN_DOMAIN;
+  const key    = process.env.MAILGUN_KEY;
+  const from   = process.env.MAIL_FROM || 'Waybill API <noreply@example.com>';
+  const to     = process.env.MAIL_TO;
 
-  const fromAddr = process.env.MAIL_FROM || `"Waybill API" <${process.env.SMTP_USER}>`;
-  const toAddr   = process.env.MAIL_TO;
-
-  if (!toAddr) {
-    console.warn('MAIL_TO is not set; skipping email send.');
+  if (!domain || !key || !to) {
+    console.warn('Mailgun env missing; skipping email.');
     return;
   }
 
-  const mail = {
-    from: fromAddr,
-    to:   toAddr,
-    subject: 'Importa fails',
-    text:    'Importa fails ir pievienots pielikumā.',
-    attachments: [{ filename: fileName, path: filePath }]
-  };
+  const form = new FormData();
+  form.append('from', from);
+  form.append('to', to);
+  form.append('subject', 'Importa fails');
+  form.append('text', 'Importa fails ir pievienots pielikumā.');
+  form.append('attachment', fs.createReadStream(filePath), { filename: fileName });
 
-  // Retry up to 3 times with backoff
-  let lastErr;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      const info = await transporter.sendMail(mail);
-      console.log(`📧 Email sent (attempt ${attempt}):`, info.messageId);
-      return;
-    } catch (err) {
-      lastErr = err;
-      console.warn(`✉️  Email attempt ${attempt} failed:`, err.code || err.message);
-      if (attempt < 3) await wait(3000 * attempt); // 3s, then 6s
-    }
+  const resp = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
+    method: 'POST',
+    headers: { Authorization: 'Basic ' + Buffer.from(`api:${key}`).toString('base64') },
+    body: form
+  });
+
+  if (!resp.ok) {
+    const txt = await resp.text();
+    throw new Error(`Mailgun send failed: ${resp.status} ${txt}`);
   }
-
-  console.error('❌ Email failed after retries. File kept on disk at:', filePath, lastErr);
+  console.log('📧 Sent merged XLSX via Mailgun:', fileName);
 }
 /* ---------- Helpers ---------- */
 // --- define constants first ---
