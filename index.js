@@ -126,50 +126,46 @@ function workbookToBuffer(wb, XLSX) {
 }
 /* ---------- END xlsx merge Helpers ---------- */
 
-// init client once (reuse)
 const mg = new Mailgun(formData).client({
   username: 'api',
-  key: process.env.MAILGUN_API_KEY, // PRIVATE key (starts with "key-...")
-  url: "https://api.eu.mailgun.net"
+  key: (process.env.MAILGUN_API_KEY || '').trim(),       // e.g. key-xxxx...
+  // Use EU only if your domain is in EU region; otherwise omit or use US default
+  url: (process.env.MAILGUN_BASE_URL || 'https://api.mailgun.net').trim()
 });
 
-// Send the merged XLSX
 async function sendMergedEmail(filePath, fileName) {
-  const domain = process.env.MAILGUN_DOMAIN;                 // e.g. mg.yourdomain.lv or sandbox....mailgun.org
-  const from   = process.env.MAIL_FROM || `Waybill API <postmaster@${domain}>`;
-  const to     = process.env.MAIL_TO   || 'edgars.volfs@gmail.com';
+  const domain = (process.env.MAILGUN_DOMAIN || '').trim(); // e.g. sandbox…mailgun.org or mg.yourdomain.com
+  const from   = (process.env.MAIL_FROM || `Waybill API <postmaster@${domain}>`).trim();
+  const to     = (process.env.MAIL_TO   || '').trim();
 
-  if (!process.env.MAILGUN_API_KEY || !domain) {
-    throw new Error('MAILGUN_API_KEY or MAILGUN_DOMAIN is missing');
+  if (!process.env.MAILGUN_API_KEY || !domain || !to) {
+    throw new Error('Missing MAILGUN_API_KEY, MAILGUN_DOMAIN, or MAIL_TO');
   }
 
   const attachmentStream = fs.createReadStream(filePath);
 
+  const params = {
+    from,
+    to,
+    subject: 'Balanss-V Rēķinu imports',
+    text: 'Importa fails pielikumā.',
+    // mailgun.js accepts attachments as array of { filename, data }
+    attachment: [{ filename: fileName, data: attachmentStream }]
+  };
 
-  const data = await mg.messages.create(`${domain}`, {
-      from,
-      to,
-      subject: 'Balanss-V Rēķinu imports',
-      text: 'Importa fails pielikumā.',
-      // mailgun.js accepts attachments as array of { filename, data }
-      attachment: [{ filename: fileName, data: attachmentStream }]
+  try {
+    const resp = await mg.messages.create(domain, params);
+    console.log('📧 Mailgun sent:', resp.id || resp.message || resp);
+    return resp;
+  } catch (err) {
+    // Helpful diagnostics (no secrets)
+    console.error('Mailgun send failed:', {
+      status: err.status,
+      type: err.type,
+      details: err.details
     });
-
-    console.log(data); // logs response data
-
-
-
-  // const data = {
-  //   from,
-  //   to,
-  //   subject: 'Balanss-V Rēķinu imports',
-  //   text: 'Importa fails pielikumā.',
-  //   // mailgun.js accepts attachments as array of { filename, data }
-  //   attachment: [{ filename: fileName, data: attachmentStream }]
-  // };
-
-  const resp = await mg.messages.create(domain, data);
-  console.log('📧 Mailgun sent:', resp.id || resp.message);
+    throw err;
+  }
 }
 // --- startup init & cleanup (wrap in IIFE: no top-level await) ---
 (async () => {
