@@ -130,9 +130,7 @@ function workbookToBuffer(wb, XLSX) {
 const mg = new Mailgun(formData).client({
   username: 'api',
   key: process.env.MAILGUN_API_KEY, // PRIVATE key (starts with "key-...")
-  url: (process.env.MAILGUN_REGION || '').toUpperCase() === 'EU'
-    ? 'https://api.eu.mailgun.net'
-    : 'https://api.mailgun.net'
+  url: "https://api.eu.mailgun.net"
 });
 
 // Send the merged XLSX
