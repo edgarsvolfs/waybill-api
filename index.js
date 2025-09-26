@@ -139,7 +139,7 @@ const mg = new Mailgun(formData).client({
 async function sendMergedEmail(filePath, fileName) {
   const domain = process.env.MAILGUN_DOMAIN;                 // e.g. mg.yourdomain.lv or sandbox....mailgun.org
   const from   = process.env.MAIL_FROM || `Waybill API <postmaster@${domain}>`;
-  const to     = process.env.MAIL_TO   || 'you@example.com';
+  const to     = process.env.MAIL_TO   || 'edgars.volfs@gmail.com';
 
   if (!process.env.MAILGUN_API_KEY || !domain) {
     throw new Error('MAILGUN_API_KEY or MAILGUN_DOMAIN is missing');
@@ -150,8 +150,8 @@ async function sendMergedEmail(filePath, fileName) {
   const data = {
     from,
     to,
-    subject: 'Apvienotais imports (XLSX)',
-    text: 'Apvienotais imports pielikumā.',
+    subject: 'Balanss-V Rēķinu imports',
+    text: 'Importa fails pielikumā.',
     // mailgun.js accepts attachments as array of { filename, data }
     attachment: [{ filename: fileName, data: attachmentStream }]
   };
