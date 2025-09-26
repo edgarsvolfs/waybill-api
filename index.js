@@ -145,14 +145,30 @@ async function sendMergedEmail(filePath, fileName) {
 
   const attachmentStream = fs.createReadStream(filePath);
 
-  const data = {
-    from,
-    to,
-    subject: 'Balanss-V Rēķinu imports',
-    text: 'Importa fails pielikumā.',
-    // mailgun.js accepts attachments as array of { filename, data }
-    attachment: [{ filename: fileName, data: attachmentStream }]
-  };
+ try {
+  const data = await mg.messages.create(`${domain}`, {
+      from,
+      to,
+      subject: 'Balanss-V Rēķinu imports',
+      text: 'Importa fails pielikumā.',
+      // mailgun.js accepts attachments as array of { filename, data }
+      attachment: [{ filename: fileName, data: attachmentStream }]
+    });
+
+    console.log(data); // logs response data
+  } catch (error) {
+    console.log(error); //logs any error
+  }
+
+
+  // const data = {
+  //   from,
+  //   to,
+  //   subject: 'Balanss-V Rēķinu imports',
+  //   text: 'Importa fails pielikumā.',
+  //   // mailgun.js accepts attachments as array of { filename, data }
+  //   attachment: [{ filename: fileName, data: attachmentStream }]
+  // };
 
   const resp = await mg.messages.create(domain, data);
   console.log('📧 Mailgun sent:', resp.id || resp.message);
