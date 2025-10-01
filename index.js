@@ -26,6 +26,8 @@ const logoMime = 'image/png';
 // xlsx merge dirs & state
 const BUFFER_DIR = '/data/incoming-xlsx';
 const MERGED_DIR = '/data/merged-xlsx';
+let pendingDocFiles = [];
+let pendingPartnerFiles = [];
 let mergeTimer = null;
 let pendingFiles = [];
 const COUNTER_DIR  = process.env.COUNTER_DIR || '/data';
@@ -80,6 +82,50 @@ function appendRows(master, incoming) {
   }
 }
 
+
+// Merge many "Partneri" workbooks: append rows per sheet (skip headers after first)
+function buildMergedPartnerWorkbook(buffers, XLSX, sheetNames = [
+  "Partneri", "Adreses", "Bankas konti", "Kontaktpersonas", "PVN numuri",
+  "Dimensijas", "Papildinformācija"
+]) {
+  // accumulator for each sheet: { header: string[], rows: string[][] }
+  const acc = new Map();
+  sheetNames.forEach(n => acc.set(n, { header: null, rows: [] }));
+
+  for (const buf of buffers) {
+    const wb = XLSX.read(buf, { type: 'buffer' });
+    for (const sName of sheetNames) {
+      const ws = wb.Sheets[sName];
+      if (!ws) continue;
+
+      const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false });
+      if (!aoa || aoa.length === 0) continue;
+
+      const header = aoa[0];
+      const rows   = aoa.slice(1);
+
+      const slot = acc.get(sName);
+      if (!slot.header) {
+        slot.header = header;
+      }
+      // If headers differ across files, you could normalize here; for now we append.
+      slot.rows.push(...rows);
+    }
+  }
+
+  const out = XLSX.utils.book_new();
+  for (const [name, { header, rows }] of acc.entries()) {
+    if (!header) continue; // nothing to write for this sheet
+    const aoa = [header, ...rows];
+    const ws  = XLSX.utils.aoa_to_sheet(aoa);
+    XLSX.utils.book_append_sheet(out, ws, name);
+  }
+  return out;
+}
+
+
+
+
 function buildMergedWorkbook(buffers, XLSX, opts = {}) {
   const sheetNames = opts.sheetNames || ["Noliktavas dokumenti", "Preces"];
 
@@ -119,6 +165,8 @@ function buildMergedWorkbook(buffers, XLSX, opts = {}) {
   return outWb;
 }
 
+
+
 function workbookToBuffer(wb, XLSX) {
   // produce a Node Buffer for response
   const out = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
@@ -133,8 +181,43 @@ const mg = new Mailgun(formData).client({
   url: (process.env.MAILGUN_BASE_URL || 'https://api.mailgun.net').trim()
 });
 
-async function sendMergedEmail(filePath, fileName) {
-  const domain = (process.env.MAILGUN_DOMAIN || '').trim(); // e.g. sandbox…mailgun.org or mg.yourdomain.com
+// async function sendMergedEmail(filePath, fileName) {
+//   const domain = (process.env.MAILGUN_DOMAIN || '').trim(); // e.g. sandbox…mailgun.org or mg.yourdomain.com
+//   const from   = (process.env.MAIL_FROM || `Waybill API <postmaster@${domain}>`).trim();
+//   const to     = (process.env.MAIL_TO   || '').trim();
+
+//   if (!process.env.MAILGUN_API_KEY || !domain || !to) {
+//     throw new Error('Missing MAILGUN_API_KEY, MAILGUN_DOMAIN, or MAIL_TO');
+//   }
+
+//   const attachmentStream = fs.createReadStream(filePath);
+
+//   const params = {
+//     from,
+//     to,
+//     subject: 'Balanss-V Rēķinu imports',
+//     text: 'Importa fails pielikumā.',
+//     // mailgun.js accepts attachments as array of { filename, data }
+//     attachment: [{ filename: fileName, data: attachmentStream }]
+//   };
+
+//   try {
+//     const resp = await mg.messages.create(domain, params);
+//     console.log('📧 Mailgun sent:', resp.id || resp.message || resp);
+//     return resp;
+//   } catch (err) {
+//     // Helpful diagnostics (no secrets)
+//     console.error('Mailgun send failed:', {
+//       status: err.status,
+//       type: err.type,
+//       details: err.details
+//     });
+//     throw err;
+//   }
+// }
+
+async function sendMergedEmailWithAttachments(attachments /* [{path,filename}] */) {
+  const domain = (process.env.MAILGUN_DOMAIN || '').trim();
   const from   = (process.env.MAIL_FROM || `Waybill API <postmaster@${domain}>`).trim();
   const to     = (process.env.MAIL_TO   || '').trim();
 
@@ -142,30 +225,21 @@ async function sendMergedEmail(filePath, fileName) {
     throw new Error('Missing MAILGUN_API_KEY, MAILGUN_DOMAIN, or MAIL_TO');
   }
 
-  const attachmentStream = fs.createReadStream(filePath);
+  const mgAttachments = attachments.map(a => ({
+    filename: a.filename,
+    data: fs.createReadStream(a.path)
+  }));
 
   const params = {
-    from,
-    to,
-    subject: 'Balanss-V Rēķinu imports',
-    text: 'Importa fails pielikumā.',
-    // mailgun.js accepts attachments as array of { filename, data }
-    attachment: [{ filename: fileName, data: attachmentStream }]
+    from, to,
+    subject: 'Apvienotie importi',
+    text: 'Pielikumā apvienotie XLSX faili.',
+    attachment: mgAttachments
   };
 
-  try {
-    const resp = await mg.messages.create(domain, params);
-    console.log('📧 Mailgun sent:', resp.id || resp.message || resp);
-    return resp;
-  } catch (err) {
-    // Helpful diagnostics (no secrets)
-    console.error('Mailgun send failed:', {
-      status: err.status,
-      type: err.type,
-      details: err.details
-    });
-    throw err;
-  }
+  const resp = await mg.messages.create(domain, params);
+  console.log('📧 Mailgun sent:', resp.id || resp.message || resp);
+  return resp;
 }
 // --- startup init & cleanup (wrap in IIFE: no top-level await) ---
 (async () => {
@@ -892,10 +966,9 @@ app.post('/api/waybill', async (req, res) => {
   }
 });
 
-/* ---------- merge API ---------- */
+
 app.post('/api/merge-xlsx', upload.any(), async (req, res) => {
   try {
-    // 1) Collect all .xlsx files
     const xlsxFiles = (req.files || []).filter(f =>
       f.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
       /\.xlsx$/i.test(f.originalname || '')
@@ -905,55 +978,85 @@ app.post('/api/merge-xlsx', upload.any(), async (req, res) => {
       return res.status(400).json({ error: 'No .xlsx files uploaded.' });
     }
 
-    // 2) Save to buffer dir
     for (const f of xlsxFiles) {
-      const safeName = Date.now() + '_' + f.originalname.replace(/[^\w.-]/g, '_');
+      const safeName = Date.now() + '_' + (f.originalname || 'file.xlsx').replace(/[^\w.-]/g, '_');
       const fullPath = path.join(BUFFER_DIR, safeName);
       fs.writeFileSync(fullPath, f.buffer);
-      pendingFiles.push(fullPath);
+
+      // classify: filename contains "partner" (covers Partneris/Partneri)
+      const isPartner = /partner/i.test(f.originalname || '');
+      if (isPartner) {
+        pendingPartnerFiles.push(fullPath);
+      } else {
+        pendingDocFiles.push(fullPath);
+      }
     }
 
-    console.log(`📥 Queued ${xlsxFiles.length} XLSX file(s). Total pending: ${pendingFiles.length}`);
+    console.log(`📥 Queued: docs=${pendingDocFiles.length}, partneri=${pendingPartnerFiles.length}`);
 
-    // 3) Start merge timer if not already running
     if (!mergeTimer) {
       console.log('⏱️ Starting 60s merge timer…');
       mergeTimer = setTimeout(async () => {
         try {
-          if (pendingFiles.length === 0) {
-            console.log('ℹ️ No files pending, skipping merge.');
-            return;
+          const attachments = [];
+
+          // --- Merge document files (Noliktavas dokumenti + Preces) ---
+          if (pendingDocFiles.length > 0) {
+            const buffers = pendingDocFiles.map(p => fs.readFileSync(p));
+            const mergedWb = buildMergedWorkbook(buffers, XLSX, {
+              sheetNames: ["Noliktavas dokumenti", "Preces"]
+            });
+            const outBuf = workbookToBuffer(mergedWb, XLSX);
+            const mergedName = `merged_docs_${Date.now()}.xlsx`;
+            const mergedPath = path.join(MERGED_DIR, mergedName);
+            fs.writeFileSync(mergedPath, outBuf);
+            console.log(`✅ Merged DOCS ${pendingDocFiles.length} -> ${mergedPath}`);
+            attachments.push({ path: mergedPath, filename: mergedName });
           }
 
-          // Merge all pending files
-          const buffers = pendingFiles.map(f => fs.readFileSync(f));
-          const mergedWb = buildMergedWorkbook(buffers, XLSX, {
-            sheetNames: ["Noliktavas dokumenti", "Preces"]
+          // --- Merge Partneri files (multi-sheet partner workbook) ---
+          if (pendingPartnerFiles.length > 0) {
+            const buffers = pendingPartnerFiles.map(p => fs.readFileSync(p));
+            const mergedPartnerWb = buildMergedPartnerWorkbook(buffers, XLSX);
+            const outBuf = XLSX.write(mergedPartnerWb, { bookType: 'xlsx', type: 'buffer' });
+            const mergedName = `merged_partneri_${Date.now()}.xlsx`;
+            const mergedPath = path.join(MERGED_DIR, mergedName);
+            fs.writeFileSync(mergedPath, outBuf);
+            console.log(`✅ Merged PARTNERI ${pendingPartnerFiles.length} -> ${mergedPath}`);
+            attachments.push({ path: mergedPath, filename: mergedName });
+          }
+
+          // cleanup queue files
+          [...pendingDocFiles, ...pendingPartnerFiles].forEach(p => {
+            try { fs.unlinkSync(p); } catch {}
           });
-          const outBuf = workbookToBuffer(mergedWb, XLSX);
+          pendingDocFiles = [];
+          pendingPartnerFiles = [];
 
-          const mergedName = `merged_${Date.now()}.xlsx`;
-          const mergedPath = path.join(MERGED_DIR, mergedName);
-          fs.writeFileSync(mergedPath, outBuf);
-
-          console.log(`✅ Merged ${pendingFiles.length} files -> ${mergedPath}`);
-
-          // Clear pending list
-          pendingFiles.forEach(f => fs.unlinkSync(f));
-          pendingFiles = [];
-
-          // Send email with merged file
-          await sendMergedEmail(mergedPath, mergedName);
+          // email if we made anything
+          if (attachments.length > 0) {
+            try {
+              await sendMergedEmailWithAttachments(attachments);
+            } catch (e) {
+              console.error('❌ Email send failed:', e);
+            }
+          } else {
+            console.log('ℹ️ Nothing to merge; no email sent.');
+          }
 
         } catch (err) {
           console.error('❌ Merge timer failed:', err);
         } finally {
           mergeTimer = null;
         }
-      }, 60_000); // 1 minute
+      }, 60_000);
     }
 
-    res.json({ status: 'queued', queued: pendingFiles.length });
+    res.json({
+      status: 'queued',
+      queued_docs: pendingDocFiles.length,
+      queued_partneri: pendingPartnerFiles.length
+    });
 
   } catch (err) {
     console.error('merge-xlsx error:', err);
