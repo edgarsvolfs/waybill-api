@@ -349,7 +349,7 @@ function saveTwoSheetXlsx({ sheet1, sheet2, asciiFilename }, outputDir = "./") {
 
 
 
-// Basic LV number-to-words (from your code, lightly tidied)
+
 function numberToWords(n) {
   if (n < 0) return '';
   const single = ['', 'viens', 'divi', 'trīs', 'četri', 'pieci', 'seši', 'septiņi', 'astoņi', 'deviņi'];
@@ -510,6 +510,7 @@ function buildTablesForXlsx(data, totals) {
     const name  = prod.description || "Prece/Pakalpojums";
     const unit  = prod.unit || "gab";
     const notes = prod.product_location || data.recieving_location || "";
+    code = Number(code);
 
     return [
       docId,                           // Noliktavas dokumenta ID
@@ -540,6 +541,148 @@ function buildTablesForXlsx(data, totals) {
     sheet2: { headers: headers2, rows: rows2, name: "Preces" },
     asciiFilename
   };
+}
+
+function buildPartnerWorkbook(data) {
+  // helpers
+  const reciever = (data.reciever || '').trim();
+  const recieverEmail = (data.reciever_email || '').trim();
+  const regNo = (data.reg_number_reciever || '').trim();
+  const addr = (data.address_reciever || data.recieving_location || '').trim();
+
+
+  const [firstName, ...restLast] = reciever.split(/\s+/);
+  const lastName = restLast.join(' ').trim();
+
+  // Filename (ASCII-safe)
+  const baseFilename = `Partneri__${(reciever || 'partner').trim()}`;
+  const asciiFilename = baseFilename
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\x20-\x7E]/g, '_');
+
+  // ---------- Sheet 1: Partneri ----------
+  const H1 = [
+    "Partnera ID","Partnera nosaukums","Partnera vārds","Partnera uzvārds","Partnera veids","Partnera uzruna","Partnera kods","Partnera tips","Partnera reģistrācijas numurs","Partnera personas kods","Partnera nodokļu maksātāja tips","Partnera piezīmes","Partnera piezīmes (drukājamās)","Partnera telefons","Partnera e-pasts","Partnera fakss","Partnera web adrese","Partnera SEZ kods","Partnera pases Nr.","Partnera pases izsniegšanas datums","Partnera pases izdevējs","Partnera norēķinu veids","Partnera kredītlimits","Partnera kredīttermiņš (dienās)","Partnera kredītstatusa piezīmes","Partneris - preču noliktava (pazīmes ID)","Partneris - kokmateriālu pārvadātājs (pazīmes ID)","Partneris - avansa norēķinu persona (pazīmes ID)","Parāda administrēšanas process","Partnera dzimšanas datums","Partnera nodokļu sociālā tipa ID","Partneris - ieslodzītais","Partneris - pensionārs"
+  ];
+  const R1 = [
+    data.documentNumber || "0000",
+    "",                // Partnera nosaukums
+    firstName || "",         // Partnera vārds
+    lastName || "",          // Partnera uzvārds
+    "Fiziska persona", "", "Imp", "",          // veids, uzruna, kods, tips
+    regNo,                   // reģistrācijas numurs (vai personas kods if you prefer)
+    "",                      // Partnera personas kods
+    "Neapliekama persona, LV",                      // nodokļu maksātāja tips
+    "", "",                  // piezīmes, drukājamās
+    "",                      // telefons
+    recieverEmail,           // e-pasts
+    "", "", "",              // fakss, web, SEZ kods
+    "", "",                  // pase Nr., izsniegšanas datums
+    "",                      // pases izdevējs
+    "", "", "",              // norēķinu veids, kredītlimits, kredīttermiņš
+    "",                      // kredītstatusa piezīmes
+    "", "", "",              // noliktava pazīme, kokmat. pārvad., avansa persona
+    "",                      // parādu administrēšanas process
+    "", "", "",              // dzimšanas datums, sociālā tipa ID, ieslodzītais
+    ""                       // pensionārs
+  ];
+
+  // ---------- Sheet 2: Adreses ----------
+  const H2 = [
+    "Partnera ID","Adreses iela","Adrese - juridiskā (pazīmes ID)","Adrese - piegādes (pazīmes ID)","Adreses pilsēta","Adreses novads","Adreses valsts kods","Adreses pasta indekss","Adreses piezīmes"
+  ];
+  const R2 = [
+    data.documentNumber || "0000",
+    addr,   // full address in one cell (you can split if you have parsing)
+    "",     // juridiskā pazīme
+    "",     // piegādes pazīme
+    "",     // pilsēta
+    "",     // novads
+    "LV",     // valsts kods (e.g., "LV" if you can detect)
+    "",     // pasta indekss
+    ""      // piezīmes
+  ];
+
+  // ---------- Sheet 3: Bankas konti ----------
+  const H3 = [
+    "Partnera ID","Konta Nr.","Konta bankas kods","Konts - pamatkonts (pazīmes ID)","Konta valūta","Konta bankas nosaukums","Konta subkonta Nr.","Konta piezīmes"
+  ];
+  const R3 = [
+    "",
+    "",   // Konta Nr.
+    "",         // bankas kods (BIC) if you have it
+    "",         // pamatkonts pazīme
+    "", // valūta
+    "",   // bankas nosaukums
+    "",         // subkonta Nr.
+    ""          // piezīmes
+  ];
+
+  // ---------- Sheet 4: Kontaktpersonas ----------
+  const H4 = [
+    "Partnera ID","Kontaktpersonas vārds","Kontaktpersonas uzvārds","Kontaktpersonas adreses iela","Kontaktpersonas uzruna","Kontaktpersonas personas kods","Kontaktpersonas amats","Kontaktpersonas telefons","Kontaktpersonas e-pasts","Kontaktpersonas personu apliecinošs dokuments","Kontaktpersonas piezīmes","Kontaktpersonas adreses pilsēta","Kontaktpersonas adreses rajons","Kontaktpersonas adreses valsts kods","Kontaktpersonas adreses pasta indekss","Kontaktpersonas adreses piezīmes"
+  ];
+  const R4 = [
+    data.documentNumber || "0000",
+    firstName || "", 
+    lastName || "",
+    addr,
+    "",
+    "",
+    "",
+    "",
+    recieverEmail,
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+  ];
+
+
+
+  const H5 = [
+    "Partnera ID","PVN numurs","PVN numura valsts kods", "PVN numurs - galvenais (pazīmes ID)"
+  ];
+  const R5 = [
+    "",     
+    "",    
+    "",    
+    ""   
+  ];
+
+  const H6 = [
+    "Partnera ID","Dimensijas kods","Dimensijas nosaukums"
+  ];
+  const R6 = [
+    "",     
+    "",    
+    ""     
+  ];
+
+  const H7 = [
+    "Partnera ID","Papildinformācija", "Papildinformācijas nosaukums"
+  ];
+  const R7 = [
+    "",    
+    "",    
+    ""    
+  ];
+
+  // build workbook
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([H1, R1]), "Partneri");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([H2, R2]), "Adreses");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([H3, R3]), "Bankas konti");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([H4, R4]), "Kontaktpersonas");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([H5, R5]), "PVN numuri");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([H6, R6]), "Dimensijas");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([H7, R7]), "Papildinformācija");
+
+  const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' });
+  return { buffer, filename: `${asciiFilename}.xlsx` };
 }
 
 /* ---------- Main API ---------- */
@@ -682,17 +825,42 @@ app.post('/api/waybill', async (req, res) => {
       sumVatBase, vatAmount, totalCost, sumDisc, todaysDate, payment_date_due
     });
 
+    const { buffer: partnerBuf, filename: partnerFilename } = buildPartnerWorkbook(data);
+
 
     
-    //// ZIP (PDF + XLSX)
-    // 1) Build XLSX buffer for the ZIP
+    // //// ZIP (PDF + XLSX)
+    // // 1) Build XLSX buffer for the ZIP
+    // const xlsxBuffer = buildXlsxBufferTwoSheets(tables);
+
+    // // 2) Ensure PDF is a Buffer
+    // const pdfBufferNode = Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer);
+
+    // // 3) Stream ZIP (PDF + XLSX)
+    // // use the safe ASCII filename returned by buildTablesForXlsx
+    // const zipBase = tables.asciiFilename || 'waybill';
+
+    // res.set({
+    //   'Content-Type': 'application/zip',
+    //   'Content-Disposition': `attachment; filename="${zipBase}.zip"`
+    // });
+
+    // const archive = archiver('zip', { zlib: { level: 9 } });
+    // archive.on('error', err => {
+    //   console.error('ZIP error:', err);
+    //   if (!res.headersSent) res.status(500).end('ZIP error');
+    // });
+    // archive.pipe(res);
+
+    // // Append files (Buffers/Streams only)
+    // archive.append(pdfBufferNode, { name: `${zipBase}.pdf` });
+    // archive.append(xlsxBuffer,    { name: `${zipBase}.xlsx` });
+
+    // await archive.finalize();
+    // //// ZIP (PDF + XLSX)
+    //// ZIP (PDF + XLSX + Partneri)
     const xlsxBuffer = buildXlsxBufferTwoSheets(tables);
-
-    // 2) Ensure PDF is a Buffer
     const pdfBufferNode = Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer);
-
-    // 3) Stream ZIP (PDF + XLSX)
-    // use the safe ASCII filename returned by buildTablesForXlsx
     const zipBase = tables.asciiFilename || 'waybill';
 
     res.set({
@@ -707,12 +875,14 @@ app.post('/api/waybill', async (req, res) => {
     });
     archive.pipe(res);
 
-    // Append files (Buffers/Streams only)
+    // existing files
     archive.append(pdfBufferNode, { name: `${zipBase}.pdf` });
     archive.append(xlsxBuffer,    { name: `${zipBase}.xlsx` });
 
+    // NEW: partner workbook
+    archive.append(partnerBuf,    { name: partnerFilename || 'Partneri.xlsx' });
+
     await archive.finalize();
-    //// ZIP (PDF + XLSX)
 
 
 

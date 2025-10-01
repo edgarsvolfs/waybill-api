@@ -1,15 +1,11 @@
-{
-  "reciever":"John Panner",
-  "reg_number_reciever":"12345678",
-  "address_reciever":"Riga, Brīvības iela 1",
-  "vat_number_reciever":"LV12345678901",
-  "bank_reciever":"Swedbank",
-  "bank_account_reciever":"LV00HABA0000123456789",
-  "recieving_location":"123 Main St, Riga",
-  "products":[
-    
-    { "description":"Vērtēšanas pakalpojumu sniegšana", "quantity":1,  "price": 121 },
-    { "description":"Ceļa izmaksas","quantity":1, "price": 121, "price_includes_vat":false, "product_location":"RIga, saapd ieal 10at -3"}
-  ]
+ { "reciever": "Andrejs lielais", 
+ "reg_number_reciever": "15135-10242", 
+ "address_reciever": "Laimdotas iela 2 - 1, Piņķi, Babītes pag., Mārupes nov.", 
+ "vat_number_reciever": "", "bank_reciever": "", "bank_account_reciever": "", 
+ "recieving_location": "Spīdolas iela 11, Piņķi, Babītes pag., Mārupes nov.",
+ "reciever_email": "andrejs.lielasix@gmail.com", 
+ "agent": "", 
+ "products": [ 
+  { "description": "", "quantity": 1, "price": 305, "price_includes_vat": true, "product_location": "Spīdolas iela 11, Piņķi, Babītes pag., Mārupes nov." }, 
+  { "description": "Ceļa izdevumi", "quantity": 1, "price": 15, "price_includes_vat": true, "product_location": "Spīdolas iela 11, Piņķi, Babītes pag., Mārupes nov." } ] 
 }
-
