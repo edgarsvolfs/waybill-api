@@ -510,7 +510,6 @@ function buildTablesForXlsx(data, totals) {
     const name  = prod.description || "Prece/Pakalpojums";
     const unit  = prod.unit || "gab";
     const notes = prod.product_location || data.recieving_location || "";
-    code = Number(code);
 
     return [
       docId,                           // Noliktavas dokumenta ID
