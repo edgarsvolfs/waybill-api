@@ -696,15 +696,15 @@ function buildPartnerWorkbook(data) {
     "Partnera ID","Kontaktpersonas vārds","Kontaktpersonas uzvārds","Kontaktpersonas adreses iela","Kontaktpersonas uzruna","Kontaktpersonas personas kods","Kontaktpersonas amats","Kontaktpersonas telefons","Kontaktpersonas e-pasts","Kontaktpersonas personu apliecinošs dokuments","Kontaktpersonas piezīmes","Kontaktpersonas adreses pilsēta","Kontaktpersonas adreses rajons","Kontaktpersonas adreses valsts kods","Kontaktpersonas adreses pasta indekss","Kontaktpersonas adreses piezīmes"
   ];
   const R4 = [
-    data.documentNumber || "0000",
-    firstName || "", 
-    lastName || "",
-    addr,
     "",
     "",
     "",
     "",
-    recieverEmail,
+    "",
+    "",
+    "",
+    "",
+    "",
     "",
     "",
     "",
